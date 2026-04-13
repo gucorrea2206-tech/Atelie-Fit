@@ -149,7 +149,13 @@ export default function App() {
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+      if (user && user.email !== 'ateliefitlondrina@gmail.com') {
+        logout();
+        setError("Acesso restrito. Apenas o administrador pode acessar este sistema.");
+        setUser(null);
+      } else {
+        setUser(user);
+      }
       setLoading(false);
     });
     return unsubscribe;
