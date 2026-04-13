@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A food product (marmita) in the inventory.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the product."
+        },
+        "price": {
+          "type": "number",
+          "description": "The selling price of the product."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the product was created."
+        }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "Movement": {
+      "title": "Movement",
+      "description": "A stock movement (entry or exit).",
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "The ID of the product."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["entrada", "saida"],
+          "description": "The type of movement."
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "The quantity moved."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the movement occurred."
+        }
+      },
+      "required": ["productId", "type", "quantity", "createdAt"]
+    },
+    "Kit": {
+      "title": "Kit",
+      "description": "A collection of products sold together.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the kit."
+        },
+        "price": {
+          "type": "number",
+          "description": "The selling price of the kit."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "quantity": { "type": "integer" }
+            },
+            "required": ["productId", "quantity"]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "items", "createdAt"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "A supplier for shopping items",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "contact": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "createdAt"]
+    },
+    "ShoppingProduct": {
+      "title": "ShoppingProduct",
+      "description": "A product for the shopping list",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "unit": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "supplierId", "unit", "createdAt"]
+    },
+    "Bill": {
+      "title": "Bill",
+      "description": "A bill to be paid",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "type": "number" },
+        "paymentCode": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "isPaid": { "type": "boolean" },
+        "isRecurring": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "value", "dueDate", "isPaid", "isRecurring", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of products."
+    },
+    "/movements/{movementId}": {
+      "schema": "Movement",
+      "description": "Collection of stock movements."
+    },
+    "/kits/{kitId}": {
+      "schema": "Kit",
+      "description": "Collection of kits."
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Collection of suppliers."
+    },
+    "/shoppingProducts/{productId}": {
+      "schema": "ShoppingProduct",
+      "description": "Collection of shopping products."
+    },
+    "/bills/{billId}": {
+      "schema": "Bill",
+      "description": "Collection of bills to pay."
+    }
+  }
+}
