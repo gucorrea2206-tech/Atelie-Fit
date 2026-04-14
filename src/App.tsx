@@ -11,6 +11,7 @@ import {
   Supplier,
   ShoppingProduct,
   Bill,
+  Sale,
   handleFirestoreError, 
   OperationType 
 } from './firebase';
@@ -112,6 +113,7 @@ export default function App() {
   
   const [activeTab, setActiveTab] = useState<'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas'>('dashboard');
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
+  const [vendasSubTab, setVendasSubTab] = useState<'lancar' | 'registros'>('lancar');
   const [shoppingSubTab, setShoppingSubTab] = useState<'produtos' | 'fornecedores' | 'lista'>('lista');
   const [billsSubTab, setBillsSubTab] = useState<'lista' | 'pagas' | 'cadastrar'>('lista');
   const [inputText, setInputText] = useState('');
@@ -132,6 +134,10 @@ export default function App() {
   // Bills State
   const [bills, setBills] = useState<Bill[]>([]);
   const [newBill, setNewBill] = useState({ name: '', value: '', paymentCode: '', dueDate: '', isRecurring: false });
+
+  // Sales State
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [newSale, setNewSale] = useState({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
 
   // Dashboard State
   const [startDate, setStartDate] = useState<string>(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
@@ -199,6 +205,11 @@ export default function App() {
       setBills(blls);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'bills'));
 
+    const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('saleDate', 'desc')), (snapshot) => {
+      const sls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+      setSales(sls);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
+
     return () => {
       unsubProducts();
       unsubMovements();
@@ -206,6 +217,7 @@ export default function App() {
       unsubSuppliers();
       unsubShoppingProducts();
       unsubBills();
+      unsubSales();
     };
   }, [user]);
 
@@ -343,9 +355,22 @@ export default function App() {
         }
       }
 
+      // Record Sale if it's a sale (saida) and we have customer info
+      if (preview.tipo === 'saida' && newSale.customerName) {
+        await addDoc(collection(db, 'sales'), {
+          customerName: newSale.customerName,
+          value: parseFloat(newSale.value) || 0,
+          itemsDescription: preview.itens.map(i => `${i.quantidade}x ${i.produto}`).join(', '),
+          saleDate: Timestamp.fromDate(new Date(newSale.saleDate + 'T12:00:00')),
+          createdAt: serverTimestamp()
+        });
+        setNewSale({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
+      }
+
       setPreview(null);
       setInputText('');
-      setActiveTab('estoque');
+      setActiveTab('vendas');
+      setVendasSubTab('registros');
     } catch (err: any) {
       setError(err.message || "Erro ao salvar movimentações.");
     } finally {
@@ -582,7 +607,12 @@ export default function App() {
               {tab === 'config' && <Settings size={18} />}
               {tab === 'compras' && <ShoppingCart size={18} />}
               {tab === 'contas' && <CreditCard size={18} />}
-              {tab === 'config' ? 'Cardápio' : tab === 'compras' ? 'Lista de Compras' : tab === 'contas' ? 'Contas a Pagar' : tab}
+              {tab === 'config' ? 'Cardápio' : 
+               tab === 'compras' ? 'Lista de Compras' : 
+               tab === 'contas' ? 'Contas a Pagar' : 
+               tab === 'producao' ? 'Produção' :
+               tab === 'vendas' ? 'Vendas' :
+               tab}
             </button>
           ))}
         </nav>
@@ -848,9 +878,9 @@ export default function App() {
             </motion.div>
           )}
 
-          {(activeTab === 'producao' || activeTab === 'vendas') && (
+          {activeTab === 'producao' && (
             <motion.div 
-              key={activeTab}
+              key="producao"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -858,26 +888,22 @@ export default function App() {
             >
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className={`p-2 rounded-lg ${activeTab === 'producao' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>
-                    {activeTab === 'producao' ? <Plus size={20} /> : <Minus size={20} />}
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                    <Plus size={20} />
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">
-                    {activeTab === 'producao' ? 'Registrar Produção' : 'Registrar Vendas'}
-                  </h2>
+                  <h2 className="text-lg font-bold text-gray-900">Registrar Produção</h2>
                 </div>
                 
                 <textarea
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder={activeTab === 'producao' 
-                    ? 'Ex: Fiz 10 parmegiana e 5 escondidinho...' 
-                    : 'Ex: Saiu 2 parmegiana e 1 escondidinho...'}
+                  placeholder="Ex: Fiz 10 parmegiana e 5 escondidinho..."
                   className="w-full h-32 p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 transition-all resize-none text-gray-700"
                 />
 
                 <button
                   disabled={isProcessing || !inputText.trim()}
-                  onClick={() => handleProcessIA(activeTab === 'producao' ? 'entrada' : 'saida')}
+                  onClick={() => handleProcessIA('entrada')}
                   className="w-full mt-4 flex items-center justify-center gap-2 py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-black transition-all disabled:opacity-50"
                 >
                   {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <Brain size={20} />}
@@ -885,7 +911,7 @@ export default function App() {
                 </button>
               </div>
 
-              {preview && (
+              {preview && preview.tipo === 'entrada' && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -958,6 +984,229 @@ export default function App() {
                   </div>
                 </motion.div>
               )}
+            </motion.div>
+          )}
+
+          {activeTab === 'vendas' && (
+            <motion.div 
+              key="vendas"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex p-1 bg-gray-100 rounded-2xl w-full max-w-2xl mx-auto">
+                {(['lancar', 'registros'] as const).map((sub) => (
+                  <button
+                    key={sub}
+                    onClick={() => setVendasSubTab(sub)}
+                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${
+                      vendasSubTab === sub 
+                        ? 'bg-white text-emerald-600 shadow-sm' 
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {sub === 'lancar' ? 'Lançar Venda' : 'Registros de Vendas'}
+                  </button>
+                ))}
+              </div>
+
+              <AnimatePresence mode="wait">
+                {vendasSubTab === 'lancar' && (
+                  <motion.div 
+                    key="lancar-venda"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className="space-y-6"
+                  >
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 rounded-lg bg-red-100 text-red-600">
+                          <Minus size={20} />
+                        </div>
+                        <h2 className="text-lg font-bold text-gray-900">Lançar Novo Pedido</h2>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Cliente</label>
+                          <input 
+                            type="text"
+                            value={newSale.customerName}
+                            onChange={(e) => setNewSale({...newSale, customerName: e.target.value})}
+                            placeholder="Nome do Cliente"
+                            className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Valor Recebido</label>
+                          <input 
+                            type="number"
+                            value={newSale.value}
+                            onChange={(e) => setNewSale({...newSale, value: e.target.value})}
+                            placeholder="R$ 0,00"
+                            className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Data</label>
+                          <input 
+                            type="date"
+                            value={newSale.saleDate}
+                            onChange={(e) => setNewSale({...newSale, saleDate: e.target.value})}
+                            className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-400 uppercase ml-1">Produtos (IA)</label>
+                        <textarea
+                          value={inputText}
+                          onChange={(e) => setInputText(e.target.value)}
+                          placeholder="Ex: Saiu 2 parmegiana e 1 escondidinho..."
+                          className="w-full h-32 p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 transition-all resize-none text-gray-700"
+                        />
+                      </div>
+
+                      <button
+                        disabled={isProcessing || !inputText.trim() || !newSale.customerName.trim()}
+                        onClick={() => handleProcessIA('saida')}
+                        className="w-full mt-4 flex items-center justify-center gap-2 py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-black transition-all disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <Brain size={20} />}
+                        Processar e Lançar
+                      </button>
+                    </div>
+
+                    {preview && preview.tipo === 'saida' && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-emerald-50 p-6 rounded-3xl border-2 border-emerald-200"
+                      >
+                        <h3 className="font-bold text-emerald-900 mb-4 flex items-center gap-2">
+                          <Check size={20} /> Confirmar Pedido de {newSale.customerName}
+                        </h3>
+                        <div className="space-y-3 mb-6">
+                          {preview.itens.map((item, idx) => {
+                            const kit = item.isKit ? kits.find(k => 
+                              k.name.toLowerCase().trim() === item.produto.toLowerCase().trim() ||
+                              k.name.toLowerCase().includes(item.produto.toLowerCase()) ||
+                              item.produto.toLowerCase().includes(k.name.toLowerCase())
+                            ) : null;
+                            
+                            return (
+                              <div key={idx} className="bg-white/50 p-4 rounded-2xl border border-emerald-100">
+                                <div className="flex justify-between items-center mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="capitalize text-emerald-800 font-bold">{item.produto}</span>
+                                    {item.isKit && <span className="text-[10px] bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase">Kit</span>}
+                                  </div>
+                                  <span className="font-bold text-emerald-900">{item.quantidade} un</span>
+                                </div>
+
+                                {item.isKit && kit && (
+                                  <div className="mt-2 pl-4 border-l-2 border-emerald-200 space-y-1">
+                                    {kit.items.map((kitItem, kIdx) => {
+                                      const originalProd = products.find(p => p.id === kitItem.productId);
+                                      const sub = item.substituicoes?.find(s => 
+                                        originalProd?.name.toLowerCase().includes(s.remover.toLowerCase()) ||
+                                        s.remover.toLowerCase().includes(originalProd?.name.toLowerCase() || '')
+                                      );
+                                      
+                                      return (
+                                        <div key={kIdx} className="text-xs flex items-center gap-2">
+                                          <ChevronRight size={12} className="text-emerald-400" />
+                                          {sub ? (
+                                            <div className="flex items-center gap-1">
+                                              <span className="line-through text-gray-400">{originalProd?.name}</span>
+                                              <span className="text-emerald-600 font-bold">→ {sub.adicionar}</span>
+                                            </div>
+                                          ) : (
+                                            <span className="text-gray-600">{originalProd?.name}</span>
+                                          )}
+                                          <span className="text-gray-400 font-medium">({kitItem.quantity * item.quantidade} un)</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={() => setPreview(null)}
+                            className="flex-1 py-3 bg-white text-gray-600 rounded-xl font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button 
+                            onClick={confirmMovements}
+                            className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200"
+                          >
+                            Confirmar Venda
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                )}
+
+                {vendasSubTab === 'registros' && (
+                  <motion.div 
+                    key="registros-vendas"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="space-y-4"
+                  >
+                    <h2 className="text-xl font-bold text-gray-900 mb-4">Vendas Realizadas</h2>
+                    {sales.length === 0 ? (
+                      <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-200">
+                        <DollarSign className="mx-auto text-gray-300 mb-4" size={48} />
+                        <p className="text-gray-500">Nenhuma venda registrada.</p>
+                      </div>
+                    ) : (
+                      sales.map(sale => (
+                        <div key={sale.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                              <UserPlus size={24} />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-gray-900">{sale.customerName}</h3>
+                              <p className="text-xs text-gray-400 flex items-center gap-1">
+                                <Calendar size={12} /> {sale.saleDate?.toDate().toLocaleDateString('pt-BR')}
+                              </p>
+                              <p className="text-sm text-gray-600 mt-1 italic">"{sale.itemsDescription}"</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-gray-400 uppercase">Valor</p>
+                            <p className="text-xl font-black text-emerald-600">
+                              R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                            <button 
+                              onClick={async () => {
+                                if (confirm('Deseja excluir este registro de venda? (Isso não retornará os produtos ao estoque automaticamente)')) {
+                                  await deleteDoc(doc(db, 'sales', sale.id));
+                                }
+                              }}
+                              className="text-red-400 hover:text-red-600 mt-2 transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           )}
 

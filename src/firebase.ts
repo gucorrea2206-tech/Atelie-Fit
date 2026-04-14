@@ -82,6 +82,15 @@ export interface Bill {
   createdAt: Timestamp;
 }
 
+export interface Sale {
+  id: string;
+  customerName: string;
+  value: number;
+  itemsDescription: string;
+  saleDate: Timestamp;
+  createdAt: Timestamp;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
