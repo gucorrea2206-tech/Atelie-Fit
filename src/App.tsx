@@ -257,31 +257,70 @@ export default function App() {
     try {
       for (const item of preview.itens) {
         if (item.isKit) {
-          const kit = kits.find(k => k.name.toLowerCase() === item.produto.toLowerCase());
-          if (kit) {
-            for (const kitItem of kit.items) {
-              const totalQty = kitItem.quantity * item.quantidade;
-              
-              // Check stock for kit components if exit
-              if (preview.tipo === 'saida') {
-                const currentStock = stock.find(s => s.id === kitItem.productId)?.currentStock || 0;
-                if (currentStock < totalQty) {
-                  const prodName = products.find(p => p.id === kitItem.productId)?.name || 'Produto';
-                  throw new Error(`Estoque insuficiente de "${prodName}" para o kit "${kit.name}". Atual: ${currentStock}, Necessário: ${totalQty}`);
+          // Robust matching for kits
+          let kit = kits.find(k => k.name.toLowerCase().trim() === item.produto.toLowerCase().trim());
+          
+          if (!kit) {
+            // Try fuzzy match if exact fails
+            kit = kits.find(k => k.name.toLowerCase().includes(item.produto.toLowerCase()) || 
+                                item.produto.toLowerCase().includes(k.name.toLowerCase()));
+          }
+          
+          if (!kit) {
+            throw new Error(`Kit "${item.produto}" não encontrado no cardápio. Por favor, verifique o nome.`);
+          }
+
+          for (const kitItem of kit.items) {
+            const originalProduct = products.find(p => p.id === kitItem.productId);
+            let finalProductId = kitItem.productId;
+            let finalProductName = originalProduct?.name || 'Produto';
+
+            // Handle substitutions
+            if (item.substituicoes && item.substituicoes.length > 0) {
+              const sub = item.substituicoes.find(s => 
+                originalProduct?.name.toLowerCase().includes(s.remover.toLowerCase()) ||
+                s.remover.toLowerCase().includes(originalProduct?.name.toLowerCase() || '')
+              );
+
+              if (sub) {
+                const newProduct = products.find(p => 
+                  p.name.toLowerCase().trim() === sub.adicionar.toLowerCase().trim() ||
+                  p.name.toLowerCase().includes(sub.adicionar.toLowerCase())
+                );
+                if (newProduct) {
+                  finalProductId = newProduct.id;
+                  finalProductName = newProduct.name;
                 }
               }
-
-              await addDoc(collection(db, 'movements'), {
-                productId: kitItem.productId,
-                type: preview.tipo,
-                quantity: totalQty,
-                createdAt: serverTimestamp()
-              });
             }
+
+            const totalQty = kitItem.quantity * item.quantidade;
+            
+            // Check stock for kit components (original or substituted) if exit
+            if (preview.tipo === 'saida') {
+              const currentStock = stock.find(s => s.id === finalProductId)?.currentStock || 0;
+              if (currentStock < totalQty) {
+                throw new Error(`Estoque insuficiente de "${finalProductName}" para o kit "${kit.name}". Atual: ${currentStock}, Necessário: ${totalQty}`);
+              }
+            }
+
+            await addDoc(collection(db, 'movements'), {
+              productId: finalProductId,
+              type: preview.tipo,
+              quantity: totalQty,
+              createdAt: serverTimestamp()
+            });
           }
         } else {
-          // Normal product logic
-          let product = products.find(p => p.name.toLowerCase() === item.produto.toLowerCase());
+          // Normal product logic with robust matching
+          let product = products.find(p => p.name.toLowerCase().trim() === item.produto.toLowerCase().trim());
+          
+          if (!product) {
+            // Try fuzzy match if exact fails
+            product = products.find(p => p.name.toLowerCase().includes(item.produto.toLowerCase()) || 
+                                      item.produto.toLowerCase().includes(p.name.toLowerCase()));
+          }
+
           let productId = product?.id;
 
           if (!productId) {
@@ -856,15 +895,52 @@ export default function App() {
                     <Check size={20} /> Confirmar Lançamento
                   </h3>
                   <div className="space-y-3 mb-6">
-                    {preview.itens.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center bg-white/50 p-3 rounded-xl">
-                        <div className="flex items-center gap-2">
-                          <span className="capitalize text-emerald-800 font-medium">{item.produto}</span>
-                          {item.isKit && <span className="text-[10px] bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase">Kit</span>}
+                    {preview.itens.map((item, idx) => {
+                      const kit = item.isKit ? kits.find(k => 
+                        k.name.toLowerCase().trim() === item.produto.toLowerCase().trim() ||
+                        k.name.toLowerCase().includes(item.produto.toLowerCase()) ||
+                        item.produto.toLowerCase().includes(k.name.toLowerCase())
+                      ) : null;
+                      
+                      return (
+                        <div key={idx} className="bg-white/50 p-4 rounded-2xl border border-emerald-100">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="capitalize text-emerald-800 font-bold">{item.produto}</span>
+                              {item.isKit && <span className="text-[10px] bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase">Kit</span>}
+                            </div>
+                            <span className="font-bold text-emerald-900">{item.quantidade} un</span>
+                          </div>
+
+                          {item.isKit && kit && (
+                            <div className="mt-2 pl-4 border-l-2 border-emerald-200 space-y-1">
+                              {kit.items.map((kitItem, kIdx) => {
+                                const originalProd = products.find(p => p.id === kitItem.productId);
+                                const sub = item.substituicoes?.find(s => 
+                                  originalProd?.name.toLowerCase().includes(s.remover.toLowerCase()) ||
+                                  s.remover.toLowerCase().includes(originalProd?.name.toLowerCase() || '')
+                                );
+                                
+                                return (
+                                  <div key={kIdx} className="text-xs flex items-center gap-2">
+                                    <ChevronRight size={12} className="text-emerald-400" />
+                                    {sub ? (
+                                      <div className="flex items-center gap-1">
+                                        <span className="line-through text-gray-400">{originalProd?.name}</span>
+                                        <span className="text-emerald-600 font-bold">→ {sub.adicionar}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-600">{originalProd?.name}</span>
+                                    )}
+                                    <span className="text-gray-400 font-medium">({kitItem.quantity * item.quantidade} un)</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                        <span className="font-bold text-emerald-900">{item.quantidade} un</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className="flex gap-3">
                     <button 
