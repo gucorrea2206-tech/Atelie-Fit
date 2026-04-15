@@ -267,6 +267,10 @@ export default function App() {
     setError(null);
 
     try {
+      const saleDateTimestamp = preview.tipo === 'saida' && newSale.customerName 
+        ? Timestamp.fromDate(new Date(newSale.saleDate + 'T12:00:00'))
+        : Timestamp.now();
+
       for (const item of preview.itens) {
         if (item.isKit) {
           // Robust matching for kits
@@ -320,6 +324,7 @@ export default function App() {
               productId: finalProductId,
               type: preview.tipo,
               quantity: totalQty,
+              referenceDate: saleDateTimestamp,
               createdAt: serverTimestamp()
             });
           }
@@ -350,6 +355,7 @@ export default function App() {
             productId,
             type: preview.tipo,
             quantity: item.quantidade,
+            referenceDate: saleDateTimestamp,
             createdAt: serverTimestamp()
           });
         }
@@ -361,7 +367,7 @@ export default function App() {
           customerName: newSale.customerName,
           value: parseFloat(newSale.value) || 0,
           itemsDescription: preview.itens.map(i => `${i.quantidade}x ${i.produto}`).join(', '),
-          saleDate: Timestamp.fromDate(new Date(newSale.saleDate + 'T12:00:00')),
+          saleDate: saleDateTimestamp,
           createdAt: serverTimestamp()
         });
         setNewSale({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
@@ -697,8 +703,8 @@ export default function App() {
                     <p className="text-3xl font-black text-emerald-600">
                       R$ {movements
                         .filter(m => {
-                          if (m.type !== 'saida' || !m.createdAt) return false;
-                          const date = m.createdAt.toDate();
+                          const date = (m.referenceDate || m.createdAt)?.toDate();
+                          if (m.type !== 'saida' || !date) return false;
                           const now = new Date();
                           return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
                         })
@@ -722,7 +728,7 @@ export default function App() {
                         end: endOfDay(new Date(endDate + 'T23:59:59'))
                       }).map(day => {
                         const daySales = movements
-                          .filter(m => m.type === 'saida' && m.createdAt && isSameDay(m.createdAt.toDate(), day))
+                          .filter(m => m.type === 'saida' && (m.referenceDate || m.createdAt) && isSameDay((m.referenceDate || m.createdAt).toDate(), day))
                           .reduce((acc, m) => acc + m.quantity, 0);
                         return {
                           name: format(day, 'dd/MM', { locale: ptBR }),
@@ -1235,7 +1241,7 @@ export default function App() {
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900 capitalize">{product?.name || 'Produto Removido'}</h3>
                         <p className="text-xs text-gray-400">
-                          {m.createdAt?.toDate().toLocaleString('pt-BR', { 
+                          {(m.referenceDate || m.createdAt)?.toDate().toLocaleString('pt-BR', { 
                             day: '2-digit', 
                             month: '2-digit', 
                             hour: '2-digit', 

@@ -35,6 +35,7 @@ export interface Movement {
   productId: string;
   type: 'entrada' | 'saida';
   quantity: number;
+  referenceDate?: Timestamp;
   createdAt: Timestamp;
 }
 

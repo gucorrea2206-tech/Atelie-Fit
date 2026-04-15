@@ -83,6 +83,15 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
+    function isValidSale(data) {
+      return data.keys().hasAll(['customerName', 'value', 'itemsDescription', 'saleDate', 'createdAt']) &&
+             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() < 100 &&
+             data.value is number &&
+             data.itemsDescription is string &&
+             data.saleDate is timestamp &&
+             data.createdAt is timestamp;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isAuthenticated() && request.resource.data.role == 'user';
@@ -128,6 +137,13 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidBill(request.resource.data);
       allow update: if isAuthenticated() && isValidBill(request.resource.data);
+      allow delete: if isAuthenticated();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSale(request.resource.data);
+      allow update: if isAuthenticated() && isValidSale(request.resource.data);
       allow delete: if isAuthenticated();
     }
   }
