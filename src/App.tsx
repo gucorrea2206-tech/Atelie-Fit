@@ -658,7 +658,7 @@ export default function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6 md:p-10 max-w-4xl mx-auto w-full">
+      <main className="flex-1 p-6 md:p-10 max-w-5xl mx-auto w-full">
         <AnimatePresence mode="wait">
           {activeTab === 'dashboard' && (
             <motion.div
@@ -688,27 +688,27 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-6">
-                  <div className="p-4 bg-emerald-100 rounded-2xl">
-                    <Package className="text-emerald-600" size={32} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div className="p-3 bg-emerald-50 rounded-2xl shrink-0">
+                    <Package className="text-emerald-600" size={24} />
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase mb-1">Total em Estoque</p>
-                    <p className="text-3xl font-black text-gray-900">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5 truncate">Estoque Total</p>
+                    <p className="text-xl sm:text-2xl font-black text-gray-900 flex items-baseline gap-1">
                       {stock.reduce((acc, item) => acc + item.currentStock, 0)}
-                      <span className="text-sm font-normal text-gray-400 ml-2">unidades</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">un</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-6">
-                  <div className="p-4 bg-blue-100 rounded-2xl">
-                    <Minus className="text-blue-600" size={32} />
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 rounded-2xl shrink-0">
+                    <Minus className="text-blue-600" size={24} />
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase mb-1">Vendas do Mês</p>
-                    <p className="text-3xl font-black text-emerald-600">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5 truncate">Vendas (Mês)</p>
+                    <p className="text-xl sm:text-2xl font-black text-blue-600 truncate">
                       R$ {sales
                         .filter(s => {
                           const date = s.saleDate?.toDate();
@@ -722,28 +722,34 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-6">
-                  <div className="p-4 bg-purple-100 rounded-2xl">
-                    <ShoppingCart className="text-purple-600" size={32} />
+                <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4 sm:col-span-2 lg:col-span-1">
+                  <div className="p-3 bg-emerald-50 rounded-2xl shrink-0">
+                    <ShoppingCart className="text-emerald-600" size={24} />
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase mb-1">Pedidos do Mês</p>
-                    <p className="text-3xl font-black text-purple-600">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5 truncate">Pedidos (Mês)</p>
+                    <p className="text-xl sm:text-2xl font-black text-emerald-600 flex items-baseline gap-1">
                       {sales.filter(s => {
                         const date = s.saleDate?.toDate();
                         if (!date) return false;
                         const now = new Date();
                         return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
                       }).length}
-                      <span className="text-sm font-normal text-gray-400 ml-2">pedidos</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">pedidos</span>
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-lg font-bold text-gray-900 mb-6">Número de Pedidos por Dia</h3>
-                <div className="h-80 w-full">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-gray-900">Volume de Pedidos por Dia</h3>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                    <span className="text-xs text-gray-500 font-medium">Pedidos</span>
+                  </div>
+                </div>
+                <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={eachDayOfInterval({
@@ -767,28 +773,29 @@ export default function App() {
                         dataKey="name" 
                         axisLine={false} 
                         tickLine={false} 
-                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                        tick={{ fill: '#9ca3af', fontSize: 11 }}
                         dy={10}
                       />
                       <YAxis 
                         axisLine={false} 
                         tickLine={false} 
-                        tick={{ fill: '#9ca3af', fontSize: 12 }}
+                        tick={{ fill: '#9ca3af', fontSize: 11 }}
                       />
                       <Tooltip 
                         cursor={{ fill: '#f9fafb' }}
                         contentStyle={{ 
-                          borderRadius: '16px', 
+                          borderRadius: '12px', 
                           border: 'none', 
                           boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                          padding: '12px'
+                          padding: '12px',
+                          fontSize: '12px'
                         }}
                       />
                       <Bar 
                         dataKey="pedidos" 
-                        fill="#8b5cf6" 
-                        radius={[6, 6, 0, 0]} 
-                        barSize={30}
+                        fill="#10b981" 
+                        radius={[4, 4, 0, 0]} 
+                        barSize={24}
                       />
                     </BarChart>
                   </ResponsiveContainer>
