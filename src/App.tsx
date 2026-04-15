@@ -504,7 +504,8 @@ export default function App() {
         if (!groupedBySupplier[supplierName]) {
           groupedBySupplier[supplierName] = [];
         }
-        groupedBySupplier[supplierName].push(`- ${product.name} / ${qty} ${product.unit}`);
+        const unitLabel = product.unit;
+        groupedBySupplier[supplierName].push(`- ${product.name} / ${qty}${unitLabel}`);
       }
     });
 
@@ -1680,7 +1681,7 @@ export default function App() {
                           <div key={p.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
                             <div>
                               <h3 className="font-bold text-gray-900">{p.name}</h3>
-                              <p className="text-xs text-gray-400">Fornecedor: {supplier?.name || 'N/A'} • Un: {p.unit}</p>
+                              <p className="text-xs text-gray-400">Fornecedor: {supplier?.name || 'N/A'} • Un: {p.unit === 'g' ? 'gramas' : p.unit}</p>
                             </div>
                             <button 
                               onClick={() => setDeleteConfirm({ id: p.id, type: 'shoppingProduct', name: p.name })}
@@ -1735,9 +1736,6 @@ export default function App() {
                                       <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
                                         <div className="flex flex-col">
                                           <p className="font-bold text-gray-900">{p.name}</p>
-                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-700 uppercase w-fit mt-1">
-                                            {p.unit}
-                                          </span>
                                         </div>
                                         <div className="flex items-center gap-3">
                                           <button 
@@ -1749,9 +1747,14 @@ export default function App() {
                                           >
                                             <Minus size={16} />
                                           </button>
-                                          <span className="w-8 text-center font-bold text-gray-900">
-                                            {shoppingListItems[p.id] || 0}
-                                          </span>
+                                          <div className="flex flex-col items-center min-w-[64px]">
+                                            <span className="text-lg font-black text-gray-900 leading-none">
+                                              {shoppingListItems[p.id] || 0}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-emerald-600 uppercase mt-0.5">
+                                              {p.unit === 'g' ? 'gramas' : p.unit}
+                                            </span>
+                                          </div>
                                           <button 
                                             onClick={() => setShoppingListItems({
                                               ...shoppingListItems,
