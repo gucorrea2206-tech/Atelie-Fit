@@ -688,7 +688,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-6">
                   <div className="p-4 bg-emerald-100 rounded-2xl">
                     <Package className="text-emerald-600" size={32} />
@@ -721,10 +721,28 @@ export default function App() {
                     </p>
                   </div>
                 </div>
+
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-6">
+                  <div className="p-4 bg-purple-100 rounded-2xl">
+                    <ShoppingCart className="text-purple-600" size={32} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-400 uppercase mb-1">Pedidos do Mês</p>
+                    <p className="text-3xl font-black text-purple-600">
+                      {sales.filter(s => {
+                        const date = s.saleDate?.toDate();
+                        if (!date) return false;
+                        const now = new Date();
+                        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                      }).length}
+                      <span className="text-sm font-normal text-gray-400 ml-2">pedidos</span>
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-lg font-bold text-gray-900 mb-6">Volume de Vendas por Dia</h3>
+                <h3 className="text-lg font-bold text-gray-900 mb-6">Número de Pedidos por Dia</h3>
                 <div className="h-80 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -733,35 +751,14 @@ export default function App() {
                         end: endOfDay(new Date(endDate + 'T23:59:59'))
                       }).map(day => {
                         const dayStr = format(day, 'yyyy-MM-dd');
-                        const daySales = sales
+                        const dayOrders = sales
                           .filter(s => {
                             const sDate = s.saleDate?.toDate();
                             return sDate && format(sDate, 'yyyy-MM-dd') === dayStr;
-                          })
-                          .reduce((acc, s) => {
-                            if (s.totalQuantity !== undefined) return acc + s.totalQuantity;
-                            // Fallback para registros antigos: tenta estimar a quantidade pela descrição
-                            const parts = s.itemsDescription.split(', ');
-                            let guessedQty = 0;
-                            parts.forEach(p => {
-                              const match = p.match(/(\d+)x/);
-                              if (match) {
-                                const qty = parseInt(match[1]);
-                                // Se for kit, tenta extrair o número de unidades do nome (ex: "kit fit 10")
-                                if (p.toLowerCase().includes('kit')) {
-                                  const kitSizeMatch = p.match(/fit\s+(\d+)/i) || p.match(/(\d+)\s+unidades/i);
-                                  const kitSize = kitSizeMatch ? parseInt(kitSizeMatch[1]) : 10;
-                                  guessedQty += qty * kitSize;
-                                } else {
-                                  guessedQty += qty;
-                                }
-                              }
-                            });
-                            return acc + guessedQty;
-                          }, 0);
+                          }).length;
                         return {
                           name: format(day, 'dd/MM', { locale: ptBR }),
-                          vendas: daySales
+                          pedidos: dayOrders
                         };
                       })}
                     >
@@ -788,13 +785,11 @@ export default function App() {
                         }}
                       />
                       <Bar 
-                        dataKey="vendas" 
-                        fill="#10b981" 
+                        dataKey="pedidos" 
+                        fill="#8b5cf6" 
                         radius={[6, 6, 0, 0]} 
                         barSize={30}
-                      >
-                        {/* Custom colors for bars if needed */}
-                      </Bar>
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
