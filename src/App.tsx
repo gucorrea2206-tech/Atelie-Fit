@@ -271,6 +271,8 @@ export default function App() {
         ? Timestamp.fromDate(new Date(newSale.saleDate + 'T12:00:00'))
         : Timestamp.now();
 
+      let totalSaleQuantity = 0;
+
       for (const item of preview.itens) {
         if (item.isKit) {
           // Robust matching for kits
@@ -285,6 +287,9 @@ export default function App() {
           if (!kit) {
             throw new Error(`Kit "${item.produto}" não encontrado no cardápio. Por favor, verifique o nome.`);
           }
+
+          const kitTotalUnits = kit.items.reduce((acc, ki) => acc + ki.quantity, 0) * item.quantidade;
+          totalSaleQuantity += kitTotalUnits;
 
           for (const kitItem of kit.items) {
             const originalProduct = products.find(p => p.id === kitItem.productId);
@@ -351,6 +356,8 @@ export default function App() {
             }
           }
 
+          totalSaleQuantity += item.quantidade;
+
           await addDoc(collection(db, 'movements'), {
             productId,
             type: preview.tipo,
@@ -366,6 +373,7 @@ export default function App() {
         await addDoc(collection(db, 'sales'), {
           customerName: newSale.customerName,
           value: parseFloat(newSale.value) || 0,
+          totalQuantity: totalSaleQuantity,
           itemsDescription: preview.itens.map(i => `${i.quantidade}x ${i.produto}`).join(', '),
           saleDate: saleDateTimestamp,
           createdAt: serverTimestamp()
@@ -725,13 +733,32 @@ export default function App() {
                         end: endOfDay(new Date(endDate + 'T23:59:59'))
                       }).map(day => {
                         const dayStr = format(day, 'yyyy-MM-dd');
-                        const daySales = movements
-                          .filter(m => {
-                            if (m.type !== 'saida') return false;
-                            const mDate = (m.referenceDate || m.createdAt)?.toDate();
-                            return mDate && format(mDate, 'yyyy-MM-dd') === dayStr;
+                        const daySales = sales
+                          .filter(s => {
+                            const sDate = s.saleDate?.toDate();
+                            return sDate && format(sDate, 'yyyy-MM-dd') === dayStr;
                           })
-                          .reduce((acc, m) => acc + m.quantity, 0);
+                          .reduce((acc, s) => {
+                            if (s.totalQuantity !== undefined) return acc + s.totalQuantity;
+                            // Fallback para registros antigos: tenta estimar a quantidade pela descrição
+                            const parts = s.itemsDescription.split(', ');
+                            let guessedQty = 0;
+                            parts.forEach(p => {
+                              const match = p.match(/(\d+)x/);
+                              if (match) {
+                                const qty = parseInt(match[1]);
+                                // Se for kit, tenta extrair o número de unidades do nome (ex: "kit fit 10")
+                                if (p.toLowerCase().includes('kit')) {
+                                  const kitSizeMatch = p.match(/fit\s+(\d+)/i) || p.match(/(\d+)\s+unidades/i);
+                                  const kitSize = kitSizeMatch ? parseInt(kitSizeMatch[1]) : 10;
+                                  guessedQty += qty * kitSize;
+                                } else {
+                                  guessedQty += qty;
+                                }
+                              }
+                            });
+                            return acc + guessedQty;
+                          }, 0);
                         return {
                           name: format(day, 'dd/MM', { locale: ptBR }),
                           vendas: daySales

@@ -87,6 +87,7 @@ export interface Sale {
   id: string;
   customerName: string;
   value: number;
+  totalQuantity: number;
   itemsDescription: string;
   saleDate: Timestamp;
   createdAt: Timestamp;
