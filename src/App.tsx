@@ -701,17 +701,14 @@ export default function App() {
                   <div>
                     <p className="text-sm font-bold text-gray-400 uppercase mb-1">Vendas do Mês</p>
                     <p className="text-3xl font-black text-emerald-600">
-                      R$ {movements
-                        .filter(m => {
-                          const date = (m.referenceDate || m.createdAt)?.toDate();
-                          if (m.type !== 'saida' || !date) return false;
+                      R$ {sales
+                        .filter(s => {
+                          const date = s.saleDate?.toDate();
+                          if (!date) return false;
                           const now = new Date();
                           return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
                         })
-                        .reduce((acc, m) => {
-                          const product = products.find(p => p.id === m.productId);
-                          return acc + (m.quantity * (product?.price || 0));
-                        }, 0)
+                        .reduce((acc, s) => acc + s.value, 0)
                         .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                   </div>
@@ -727,8 +724,13 @@ export default function App() {
                         start: startOfDay(new Date(startDate + 'T00:00:00')),
                         end: endOfDay(new Date(endDate + 'T23:59:59'))
                       }).map(day => {
+                        const dayStr = format(day, 'yyyy-MM-dd');
                         const daySales = movements
-                          .filter(m => m.type === 'saida' && (m.referenceDate || m.createdAt) && isSameDay((m.referenceDate || m.createdAt).toDate(), day))
+                          .filter(m => {
+                            if (m.type !== 'saida') return false;
+                            const mDate = (m.referenceDate || m.createdAt)?.toDate();
+                            return mDate && format(mDate, 'yyyy-MM-dd') === dayStr;
+                          })
                           .reduce((acc, m) => acc + m.quantity, 0);
                         return {
                           name: format(day, 'dd/MM', { locale: ptBR }),
