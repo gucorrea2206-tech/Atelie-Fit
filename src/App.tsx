@@ -206,7 +206,7 @@ export default function App() {
       setBills(blls);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'bills'));
 
-    const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('saleDate', 'desc')), (snapshot) => {
+    const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('saleDate', 'desc'), orderBy('createdAt', 'desc')), (snapshot) => {
       const sls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
       setSales(sls);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
