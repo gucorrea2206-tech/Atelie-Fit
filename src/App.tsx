@@ -25,6 +25,7 @@ import {
   serverTimestamp, 
   deleteDoc,
   updateDoc,
+  writeBatch,
   doc,
   Timestamp
 } from 'firebase/firestore';
@@ -271,21 +272,27 @@ export default function App() {
         ? Timestamp.fromDate(new Date(newSale.saleDate + 'T12:00:00'))
         : Timestamp.now();
 
+      const batch = writeBatch(db);
       let totalSaleQuantity = 0;
+      let saleId = "";
 
+      // 1. If it's a sale, create the sale doc first to get an ID
+      if (preview.tipo === 'saida' && newSale.customerName) {
+        const saleRef = doc(collection(db, 'sales'));
+        saleId = saleRef.id;
+        // We'll set the data later after calculating totalSaleQuantity
+      }
+
+      // 2. Process items and prepare movement docs
       for (const item of preview.itens) {
         if (item.isKit) {
-          // Robust matching for kits
           let kit = kits.find(k => k.name.toLowerCase().trim() === item.produto.toLowerCase().trim());
-          
           if (!kit) {
-            // Try fuzzy match if exact fails
             kit = kits.find(k => k.name.toLowerCase().includes(item.produto.toLowerCase()) || 
                                 item.produto.toLowerCase().includes(k.name.toLowerCase()));
           }
-          
           if (!kit) {
-            throw new Error(`Kit "${item.produto}" não encontrado no cardápio. Por favor, verifique o nome.`);
+            throw new Error(`Kit "${item.produto}" não encontrado no cardápio.`);
           }
 
           const kitTotalUnits = kit.items.reduce((acc, ki) => acc + ki.quantity, 0) * item.quantidade;
@@ -296,7 +303,6 @@ export default function App() {
             let finalProductId = kitItem.productId;
             let finalProductName = originalProduct?.name || 'Produto';
 
-            // Handle substitutions
             if (item.substituicoes && item.substituicoes.length > 0) {
               const sub = item.substituicoes.find(s => 
                 originalProduct?.name.toLowerCase().includes(s.remover.toLowerCase()) ||
@@ -317,60 +323,59 @@ export default function App() {
 
             const totalQty = kitItem.quantity * item.quantidade;
             
-            // Check stock for kit components (original or substituted) if exit
             if (preview.tipo === 'saida') {
               const currentStock = stock.find(s => s.id === finalProductId)?.currentStock || 0;
               if (currentStock < totalQty) {
-                throw new Error(`Estoque insuficiente de "${finalProductName}" para o kit "${kit.name}". Atual: ${currentStock}, Necessário: ${totalQty}`);
+                throw new Error(`Estoque insuficiente de "${finalProductName}". Necessário: ${totalQty}, Atual: ${currentStock}`);
               }
             }
 
-            await addDoc(collection(db, 'movements'), {
+            const movementRef = doc(collection(db, 'movements'));
+            batch.set(movementRef, {
               productId: finalProductId,
               type: preview.tipo,
               quantity: totalQty,
               referenceDate: saleDateTimestamp,
-              createdAt: serverTimestamp()
+              createdAt: serverTimestamp(),
+              saleId: saleId || null // Link to sale if applicable
             });
           }
         } else {
-          // Normal product logic with robust matching
           let product = products.find(p => p.name.toLowerCase().trim() === item.produto.toLowerCase().trim());
-          
           if (!product) {
-            // Try fuzzy match if exact fails
             product = products.find(p => p.name.toLowerCase().includes(item.produto.toLowerCase()) || 
                                       item.produto.toLowerCase().includes(p.name.toLowerCase()));
           }
 
           let productId = product?.id;
-
           if (!productId) {
-            throw new Error(`Produto "${item.produto}" não encontrado no cardápio. Por favor, cadastre-o primeiro na aba Cardápio/Kits.`);
+            throw new Error(`Produto "${item.produto}" não encontrado.`);
           }
 
           if (preview.tipo === 'saida') {
             const currentStock = stock.find(s => s.id === productId)?.currentStock || 0;
             if (currentStock < item.quantidade) {
-              throw new Error(`Estoque insuficiente para "${item.produto}". Atual: ${currentStock}, Necessário: ${item.quantidade}`);
+              throw new Error(`Estoque insuficiente para "${item.produto}". Necessário: ${item.quantidade}, Atual: ${currentStock}`);
             }
           }
 
           totalSaleQuantity += item.quantidade;
 
-          await addDoc(collection(db, 'movements'), {
+          const movementRef = doc(collection(db, 'movements'));
+          batch.set(movementRef, {
             productId,
             type: preview.tipo,
             quantity: item.quantidade,
             referenceDate: saleDateTimestamp,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            saleId: saleId || null // Link to sale if applicable
           });
         }
       }
 
-      // Record Sale if it's a sale (saida) and we have customer info
-      if (preview.tipo === 'saida' && newSale.customerName) {
-        await addDoc(collection(db, 'sales'), {
+      // 3. Finalize Sale doc if applicable
+      if (saleId) {
+        batch.set(doc(db, 'sales', saleId), {
           customerName: newSale.customerName,
           value: parseFloat(newSale.value) || 0,
           totalQuantity: totalSaleQuantity,
@@ -381,6 +386,7 @@ export default function App() {
         setNewSale({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
       }
 
+      await batch.commit();
       setPreview(null);
       setInputText('');
       setActiveTab('vendas');
@@ -1230,8 +1236,25 @@ export default function App() {
                             </p>
                             <button 
                               onClick={async () => {
-                                if (confirm('Deseja excluir este registro de venda? (Isso não retornará os produtos ao estoque automaticamente)')) {
-                                  await deleteDoc(doc(db, 'sales', sale.id));
+                                const hasLinkedMovements = movements.some(m => m.saleId === sale.id);
+                                const confirmMsg = hasLinkedMovements 
+                                  ? 'Deseja excluir este registro de venda? O estoque será restaurado automaticamente.'
+                                  : 'Deseja excluir este registro de venda? (AVISO: Esta venda é antiga e o estoque NÃO será restaurado automaticamente)';
+                                
+                                if (confirm(confirmMsg)) {
+                                  try {
+                                    const batch = writeBatch(db);
+                                    batch.delete(doc(db, 'sales', sale.id));
+                                    
+                                    const linkedMovements = movements.filter(m => m.saleId === sale.id);
+                                    linkedMovements.forEach(m => {
+                                      batch.delete(doc(db, 'movements', m.id));
+                                    });
+                                    
+                                    await batch.commit();
+                                  } catch (err) {
+                                    console.error("Erro ao deletar venda:", err);
+                                  }
                                 }
                               }}
                               className="text-red-400 hover:text-red-600 mt-2 transition-colors"
