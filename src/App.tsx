@@ -254,8 +254,8 @@ export default function App() {
       };
       const result = await interpretStockText(inputText, type, context);
       setPreview(result);
-    } catch (err) {
-      setError("Falha ao interpretar texto. Tente novamente.");
+    } catch (err: any) {
+      setError(`Erro na IA: ${err.message || 'Falha ao interpretar texto'}. Tente novamente.`);
       console.error(err);
     } finally {
       setIsProcessing(false);

@@ -20,75 +20,50 @@ export async function interpretStockText(
   type: 'entrada' | 'saida',
   context: { products: string[], kits: string[] }
 ): Promise<AIInterpretation> {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Interprete o seguinte texto de ${type === 'entrada' ? 'produção' : 'vendas'} de marmitas e retorne um JSON estruturado.
-    
-    Texto: "${text}"
-    
-    Contexto do Cardápio (Produtos e Kits conhecidos):
-    Produtos: ${context.products.join(', ')}
-    Kits: ${context.kits.join(', ')}
-    
-    Regras:
-    1. Identifique o nome do produto ou kit. Você DEVE usar EXCLUSIVAMENTE os nomes fornecidos no contexto.
-    2. Se o usuário mencionar algo que não está no contexto, tente encontrar o correspondente mais próximo no contexto.
-    3. Identifique a quantidade.
-    4. O tipo deve ser "${type}".
-    5. Se o item identificado for um KIT (baseado no contexto), marque "isKit: true".
-    6. Se o usuário mencionar substituições em um kit (ex: "Kit X trocando Y por Z"), identifique os itens a remover e adicionar.
-       - "remover": nome exato da marmita que sai do kit (deve estar na lista de Produtos).
-       - "adicionar": nome exato da marmita que entra no lugar (deve estar na lista de Produtos).
-    7. NÃO invente novos nomes de produtos. Use apenas o que está na lista de Produtos ou Kits.
-    
-    Formato esperado:
-    {
-      "tipo": "${type}",
-      "itens": [
-        { 
-          "produto": "nome exato do kit", 
-          "quantidade": 1, 
-          "isKit": true,
-          "substituicoes": [
-            { "remover": "nome da marmita que sai", "adicionar": "nome da marmita que entra" }
-          ]
-        }
-      ]
-    }`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          tipo: { type: Type.STRING, enum: ["entrada", "saida"] },
-          itens: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                produto: { type: Type.STRING },
-                quantidade: { type: Type.NUMBER },
-                isKit: { type: Type.BOOLEAN },
-                substituicoes: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      remover: { type: Type.STRING },
-                      adicionar: { type: Type.STRING }
-                    },
-                    required: ["remover", "adicionar"]
-                  }
-                }
-              },
-              required: ["produto", "quantidade"]
-            }
-          }
-        },
-        required: ["tipo", "itens"]
-      }
-    }
-  });
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: `Você é um assistente de gestão de estoque para marmitas saudáveis. 
+      Interprete o texto abaixo para uma operação de ${type === 'entrada' ? 'PRODUÇÃO' : 'VENDA'}.
 
-  return JSON.parse(response.text);
+      TEXTO DO CLIENTE/ATELIÊ: "${text}"
+
+      CARDÁPIO PERMITIDO (Use APENAS estes nomes):
+      PRODUTOS: ${context.products.length > 0 ? context.products.join(', ') : 'Nenhum cadastrado'}
+      KITS: ${context.kits.length > 0 ? context.kits.join(', ') : 'Nenhum cadastrado'}
+
+      REGRAS DE OURO:
+      1. Identifique o produto ou kit e a quantidade numérica. 
+      2. Mapeie nomes parecidos para os nomes EXATOS do CARDÁPIO acima.
+      3. Se for um kit, marque "isKit: true".
+      4. Se houver substituição em kit (ex: trocando X por Y), registre em "substituicoes" com "remover" e "adicionar".
+      5. Retorne APENAS o JSON puro.
+
+      FORMATO JSON:
+      {
+        "tipo": "${type}",
+        "itens": [
+          { "produto": "Nome do Cardápio", "quantidade": 1, "isKit": false, "substituicoes": [] }
+        ]
+      }`,
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const resultText = response.text;
+    if (!resultText) {
+      throw new Error("A IA retornou uma resposta vazia. Tente novamente.");
+    }
+
+    // Limpeza rigorosa para evitar quebra por conta de blocos markdown
+    const cleanJson = resultText.replace(/```json\n?|```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (error: any) {
+    console.error("Erro na interpretação da IA:", error);
+    if (error instanceof SyntaxError) {
+      throw new Error("Erro de processamento da IA. Tente simplificar o texto do pedido.");
+    }
+    throw error;
+  }
 }
