@@ -22,7 +22,7 @@ export async function interpretStockText(
 ): Promise<AIInterpretation> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: `Você é um assistente de gestão de estoque para marmitas saudáveis. 
       Interprete o texto abaixo para uma operação de ${type === 'entrada' ? 'PRODUÇÃO' : 'VENDA'}.
 
