@@ -1307,6 +1307,22 @@ export default function App() {
                       <div className={`font-bold ${m.type === 'entrada' ? 'text-blue-600' : 'text-red-600'}`}>
                         {m.type === 'entrada' ? '+' : '-'}{m.quantity}
                       </div>
+                      <button 
+                        onClick={async () => {
+                          if (confirm('Deseja excluir este lançamento? O estoque será recalculado automaticamente.')) {
+                            try {
+                              await deleteDoc(doc(db, 'movements', m.id));
+                            } catch (err) {
+                              console.error("Erro ao deletar lançamento:", err);
+                              alert("Falha ao remover o lançamento.");
+                            }
+                          }
+                        }}
+                        className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                        title="Excluir lançamento"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   );
                 })
