@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: process.env.PAID_GEMINI_KEY || process.env.GEMINI_API_KEY || "" });
 
 export interface AIInterpretation {
   tipo: 'entrada' | 'saida';
@@ -65,5 +65,62 @@ export async function interpretStockText(
       throw new Error("Erro de processamento da IA. Tente simplificar o texto do pedido.");
     }
     throw error;
+  }
+}
+
+export interface AIBillItem {
+  nome: string;
+  valor: number;
+  codigoPagamento: string;
+  dataVencimento: string; // ISO date string
+  categoria: string;
+}
+
+export async function analyzeBillImage(base64Image: string): Promise<AIBillItem> {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: { 
+        parts: [
+          {
+            text: `Analise a imagem deste boleto e extraia as seguintes informações em formato JSON:
+            1. Nome do Fornecedor (nome)
+            2. Valor do boleto (valor - apenas número)
+            3. Código de barras ou linha digitável para pagamento (codigoPagamento)
+            4. Data de vencimento no formato YYYY-MM-DD (dataVencimento)
+            5. Estilo de mercadoria ou categoria (categoria - ex: Alimentos, Embalagens, Energia, etc.)
+
+            Retorne APENAS o JSON puro no seguinte formato:
+            {
+              "nome": "NOME DO FORNECEDOR",
+              "valor": 123.45,
+              "codigoPagamento": "0000000000000000000000000000000",
+              "dataVencimento": "2024-12-31",
+              "categoria": "CATEGORIA"
+            }`
+          },
+          {
+            inlineData: {
+              mimeType: "image/jpeg",
+              data: base64Image
+            }
+          }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const resultText = response.text;
+    if (!resultText) {
+      throw new Error("A IA não conseguiu ler a imagem do boleto. Tente novamente com uma foto mais nítida.");
+    }
+
+    const cleanJson = resultText.replace(/```json\n?|```/g, "").trim();
+    return JSON.parse(cleanJson);
+  } catch (error: any) {
+    console.error("Erro na análise da imagem do boleto:", error);
+    throw new Error("Erro ao processar imagem do boleto. Verifique se a iluminação está boa.");
   }
 }

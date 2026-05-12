@@ -81,6 +81,7 @@ export interface Bill {
   dueDate: Timestamp;
   isPaid: boolean;
   isRecurring: boolean;
+  category?: string; // Estilo de mercadoria
   createdAt: Timestamp;
 }
 

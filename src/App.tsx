@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   auth, 
   db, 
@@ -29,7 +29,7 @@ import {
   doc,
   Timestamp
 } from 'firebase/firestore';
-import { interpretStockText, AIInterpretation } from './gemini';
+import { interpretStockText, AIInterpretation, analyzeBillImage, AIBillItem } from './gemini';
 import { 
   Plus, 
   Minus, 
@@ -56,7 +56,9 @@ import {
   Clock,
   AlertTriangle,
   Repeat,
-  DollarSign
+  DollarSign,
+  Camera,
+  Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -134,7 +136,8 @@ export default function App() {
 
   // Bills State
   const [bills, setBills] = useState<Bill[]>([]);
-  const [newBill, setNewBill] = useState({ name: '', value: '', paymentCode: '', dueDate: '', isRecurring: false });
+  const [newBill, setNewBill] = useState({ name: '', value: '', paymentCode: '', dueDate: '', isRecurring: false, category: '' });
+  const [isAnalyzingBill, setIsAnalyzingBill] = useState(false);
 
   // Sales State
   const [sales, setSales] = useState<Sale[]>([]);
@@ -259,6 +262,44 @@ export default function App() {
       console.error(err);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleBillImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsAnalyzingBill(true);
+    setError(null);
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        try {
+          const result = await analyzeBillImage(base64);
+          setNewBill({
+            name: result.nome,
+            value: result.valor.toString(),
+            paymentCode: result.codigoPagamento,
+            dueDate: result.dataVencimento,
+            category: result.categoria,
+            isRecurring: false
+          });
+        } catch (err: any) {
+          setError(err.message);
+        } finally {
+          setIsAnalyzingBill(false);
+        }
+      };
+      reader.onerror = () => {
+        setError("Erro ao ler o arquivo da imagem.");
+        setIsAnalyzingBill(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setError("Erro ao processar a imagem.");
+      setIsAnalyzingBill(false);
     }
   };
 
@@ -534,9 +575,10 @@ export default function App() {
         dueDate: Timestamp.fromDate(new Date(newBill.dueDate + 'T00:00:00')),
         isPaid: false,
         isRecurring: newBill.isRecurring,
+        category: newBill.category || '',
         createdAt: serverTimestamp()
       });
-      setNewBill({ name: '', value: '', paymentCode: '', dueDate: '', isRecurring: false });
+      setNewBill({ name: '', value: '', paymentCode: '', dueDate: '', isRecurring: false, category: '' });
       setBillsSubTab('lista');
     } catch (err) {
       setError("Erro ao salvar conta.");
@@ -1891,17 +1933,45 @@ export default function App() {
                     exit={{ opacity: 0, x: 20 }}
                     className="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-sm border border-gray-100 space-y-6"
                   >
-                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                      <Wallet className="text-emerald-600" size={24} /> Nova Conta
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="text-emerald-600" size={24} /> Nova Conta
+                      </div>
+                      <label className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-100 transition-all border border-emerald-100">
+                        {isAnalyzingBill ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <Camera size={16} />
+                        )}
+                        {isAnalyzingBill ? 'Analisando...' : 'Ler com Foto (IA)'}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          capture="environment" 
+                          className="hidden" 
+                          onChange={handleBillImageUpload}
+                          disabled={isAnalyzingBill}
+                        />
+                      </label>
                     </h2>
                     <div className="grid grid-cols-1 gap-4">
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-400 ml-2">NOME DA CONTA</label>
+                        <label className="text-xs font-bold text-gray-400 ml-2 uppercase">Nome do Fornecedor / Conta</label>
                         <input 
                           type="text"
                           value={newBill.name}
                           onChange={(e) => setNewBill({...newBill, name: e.target.value})}
                           placeholder="Ex: Aluguel, Energia, Fornecedor X"
+                          className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-400 ml-2 uppercase">Categoria / Estilo de Mercadoria</label>
+                        <input 
+                          type="text"
+                          value={newBill.category}
+                          onChange={(e) => setNewBill({...newBill, category: e.target.value})}
+                          placeholder="Ex: Alimentos, Embalagens, Impostos"
                           className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
@@ -1991,6 +2061,11 @@ export default function App() {
                                     <div className="flex items-center gap-2">
                                       <h3 className="font-bold text-gray-900">{bill.name}</h3>
                                       {bill.isRecurring && <Repeat size={14} className="text-emerald-500" />}
+                                      {bill.category && (
+                                        <span className="px-2 py-0.5 bg-gray-100 text-[10px] font-bold text-gray-500 rounded-full uppercase tracking-tighter transition-all">
+                                          {bill.category}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-lg font-black text-emerald-600">
                                       {bill.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -1999,6 +2074,14 @@ export default function App() {
                                       Vencimento: {format(dueDate, 'dd/MM/yyyy')}
                                       {isOverdue && ' (ATRASADA)'}
                                     </p>
+                                    {bill.paymentCode && (
+                                      <button 
+                                        onClick={() => navigator.clipboard.writeText(bill.paymentCode)}
+                                        className="mt-2 flex items-center gap-2 text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-all uppercase"
+                                      >
+                                        <Copy size={12} /> Copiar Código de Barras
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2068,6 +2151,11 @@ export default function App() {
                                     <div className="flex items-center gap-2">
                                       <h3 className="font-bold text-gray-900 line-through">{bill.name}</h3>
                                       {bill.isRecurring && <Repeat size={14} className="text-emerald-500" />}
+                                      {bill.category && (
+                                        <span className="px-2 py-0.5 bg-gray-100 text-[10px] font-bold text-gray-500 rounded-full uppercase tracking-tighter">
+                                          {bill.category}
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-lg font-black text-gray-400">
                                       {bill.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
