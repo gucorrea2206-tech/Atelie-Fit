@@ -58,7 +58,19 @@ import {
   Repeat,
   DollarSign,
   Camera,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MessageCircle,
+  PlugZap,
+  Send,
+  Headphones,
+  RefreshCcw,
+  Tag,
+  CheckCircle2,
+  Activity,
+  Bot,
+  Route,
+  Zap,
+  Megaphone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -104,6 +116,78 @@ function ErrorDisplay({ error, onRetry }: { error: string, onRetry: () => void }
   );
 }
 
+type WhatsAppEnvironment = 'atendimento' | 'agentes' | 'base' | 'automacoes' | 'integracoes';
+
+const whatsappConversations = [
+  {
+    id: 1,
+    customer: 'Mariana Alves',
+    intent: 'Comprar kit semanal',
+    agent: 'Nina',
+    time: 'Agora',
+    score: 92,
+    messages: [
+      { from: 'client', text: 'Oi, queria um cardápio fit pra semana. Quero emagrecer mas sem passar fome.' },
+      { from: 'agent', text: 'Perfeito, Mariana. Para esse objetivo eu indicaria o Kit Equilíbrio com 10 marmitas. Você prefere frango, carne ou misto?' },
+      { from: 'client', text: 'Misto. Entrega no Centro?' },
+    ],
+  },
+  {
+    id: 2,
+    customer: 'Rafael Costa',
+    intent: 'Atraso na entrega',
+    agent: 'Caio',
+    time: '8 min',
+    score: 34,
+    messages: [
+      { from: 'client', text: 'Meu pedido era pra chegar 12h e nada até agora.' },
+      { from: 'agent', text: 'Sinto muito pelo atraso, Rafael. Vou verificar o pedido e já te retorno com a previsão atualizada.' },
+    ],
+  },
+  {
+    id: 3,
+    customer: 'Bianca Prado',
+    intent: 'Orçamento parado',
+    agent: 'Maya',
+    time: '23 min',
+    score: 76,
+    messages: [
+      { from: 'agent', text: 'Bianca, deixei separado o combo de 5 almoços com 10% de desconto até hoje. Quer que eu finalize pra você?' },
+    ],
+  },
+];
+
+const whatsappAgents = [
+  {
+    name: 'Lia',
+    role: 'Atendimento inicial',
+    status: 'Ativo',
+    tone: 'Acolhedor, direto e consultivo',
+    goal: 'Entender intenção, coletar bairro e direcionar sem parecer robô.',
+  },
+  {
+    name: 'Nina',
+    role: 'Vendas e cardápio',
+    status: 'Ativo',
+    tone: 'Persuasivo, leve e orientado a benefícios',
+    goal: 'Recomendar marmitas, kits e combos semanais para fechar pedido.',
+  },
+  {
+    name: 'Caio',
+    role: 'Suporte e pós-venda',
+    status: 'Ativo',
+    tone: 'Calmo, resolutivo e empático',
+    goal: 'Resolver atraso, troca, item incorreto e acionar atendimento humano.',
+  },
+  {
+    name: 'Maya',
+    role: 'Recuperação',
+    status: 'Revisão',
+    tone: 'Gentil, oportuno e sem insistência',
+    goal: 'Reativar clientes parados e recuperar orçamentos sem resposta.',
+  },
+];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +198,9 @@ export default function App() {
   const [kits, setKits] = useState<Kit[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'whatsapp'>('dashboard');
+  const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('atendimento');
+  const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState(1);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
   const [vendasSubTab, setVendasSubTab] = useState<'lancar' | 'registros'>('lancar');
   const [shoppingSubTab, setShoppingSubTab] = useState<'produtos' | 'fornecedores' | 'lista'>('lista');
@@ -632,6 +718,8 @@ export default function App() {
     return <ErrorDisplay error={error} onRetry={() => setError(null)} />;
   }
 
+  const selectedConversation = whatsappConversations.find(c => c.id === selectedWhatsappConversation) || whatsappConversations[0];
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Sidebar Navigation */}
@@ -649,7 +737,7 @@ export default function App() {
         </div>
 
         <nav className="flex-1 px-4 py-2 space-y-2 overflow-x-auto md:overflow-x-visible flex md:flex-col no-scrollbar">
-          {(['dashboard', 'estoque', 'producao', 'vendas', 'config', 'compras', 'contas'] as const).map((tab) => (
+          {(['dashboard', 'estoque', 'producao', 'vendas', 'config', 'compras', 'contas', 'whatsapp'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => {
@@ -670,9 +758,11 @@ export default function App() {
               {tab === 'config' && <Settings size={18} />}
               {tab === 'compras' && <ShoppingCart size={18} />}
               {tab === 'contas' && <CreditCard size={18} />}
+              {tab === 'whatsapp' && <MessageCircle size={18} />}
               {tab === 'config' ? 'Cardápio' : 
                tab === 'compras' ? 'Lista de Compras' : 
                tab === 'contas' ? 'Contas a Pagar' : 
+               tab === 'whatsapp' ? 'WhatsApp IA' :
                tab === 'producao' ? 'Produção' :
                tab === 'vendas' ? 'Vendas' :
                tab}
@@ -2189,6 +2279,300 @@ export default function App() {
                   </motion.section>
                 )}
               </AnimatePresence>
+            </motion.div>
+          )}
+
+          {activeTab === 'whatsapp' && (
+            <motion.div
+              key="whatsapp"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <MessageCircle className="text-emerald-600" size={26} />
+                    WhatsApp IA
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">Atendimento com Evolution API, ChatGPT e agentes por intenção.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="flex items-center gap-2 px-4 py-3 bg-white border border-gray-100 rounded-2xl text-sm font-bold text-gray-600 hover:bg-gray-50 transition-all shadow-sm">
+                    <PlugZap size={18} />
+                    Testar Evolution
+                  </button>
+                  <button className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">
+                    <Check size={18} />
+                    Salvar
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label: 'Instância', value: 'AtelieFit-01', note: 'Conectada', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: 'Conversas hoje', value: '38', note: '12 oportunidades', icon: Activity, color: 'text-blue-600', bg: 'bg-blue-50' },
+                  { label: 'Tempo médio', value: '42s', note: 'Primeira resposta', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+                  { label: 'Agentes ativos', value: '3/4', note: '1 em revisão', icon: Brain, color: 'text-purple-600', bg: 'bg-purple-50' },
+                ].map(item => (
+                  <div key={item.label} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <div className={`p-3 ${item.bg} rounded-2xl shrink-0`}>
+                      <item.icon className={item.color} size={22} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{item.label}</p>
+                      <p className="text-2xl font-black text-gray-900">{item.value}</p>
+                      <p className="text-xs text-gray-400">{item.note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                {[
+                  { id: 'atendimento', label: 'Atendimento', note: 'Conversas e assumir chat', icon: MessageCircle },
+                  { id: 'agentes', label: 'Agentes', note: 'Personalidade e rotas', icon: Bot },
+                  { id: 'base', label: 'Base comercial', note: 'Cardápio e promoções', icon: Store },
+                  { id: 'automacoes', label: 'Automações', note: 'Recuperação e pós-venda', icon: RefreshCcw },
+                  { id: 'integracoes', label: 'Integrações', note: 'Evolution e ChatGPT', icon: PlugZap },
+                ].map(environment => (
+                  <button
+                    key={environment.id}
+                    onClick={() => setWhatsappEnvironment(environment.id as WhatsAppEnvironment)}
+                    className={`text-left bg-white p-4 rounded-2xl border transition-all shadow-sm ${
+                      whatsappEnvironment === environment.id
+                        ? 'border-emerald-200 ring-2 ring-emerald-100'
+                        : 'border-gray-100 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <environment.icon className={whatsappEnvironment === environment.id ? 'text-emerald-600' : 'text-gray-400'} size={18} />
+                      <span className="text-sm font-bold text-gray-900">{environment.label}</span>
+                    </div>
+                    <p className="text-xs text-gray-400">{environment.note}</p>
+                  </button>
+                ))}
+              </div>
+
+              {whatsappEnvironment === 'atendimento' && (
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900">Preview das Conversas</h3>
+                    <p className="text-sm text-gray-500">Fila de atendimento, intenção detectada e passagem para humano.</p>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr]">
+                    <div className="border-b lg:border-b-0 lg:border-r border-gray-100">
+                      {whatsappConversations.map(conversation => (
+                        <button
+                          key={conversation.id}
+                          onClick={() => setSelectedWhatsappConversation(conversation.id)}
+                          className={`w-full p-4 text-left border-b border-gray-50 hover:bg-gray-50 transition-all ${
+                            selectedWhatsappConversation === conversation.id ? 'bg-emerald-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 bg-gray-900 text-white rounded-full flex items-center justify-center text-sm font-bold shrink-0">
+                              {conversation.customer.slice(0, 1)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-bold text-gray-900 truncate">{conversation.customer}</p>
+                                <span className="text-[10px] text-gray-400">{conversation.time}</span>
+                              </div>
+                              <p className="text-xs text-gray-500 truncate mt-1">{conversation.intent}</p>
+                              <div className="flex items-center justify-between mt-2">
+                                <span className="text-[10px] font-bold bg-white text-gray-500 px-2 py-1 rounded-lg border border-gray-100">{conversation.agent}</span>
+                                <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
+                                  conversation.score < 50 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                                }`}>
+                                  {conversation.score}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="min-h-[480px] flex flex-col bg-gray-50">
+                      <div className="p-4 bg-white border-b border-gray-100 flex items-center justify-between">
+                        <div>
+                          <p className="font-bold text-gray-900">{selectedConversation.customer}</p>
+                          <p className="text-xs text-gray-500">Em atendimento com {selectedConversation.agent}</p>
+                        </div>
+                        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-50">
+                          <Headphones size={16} />
+                          Assumir
+                        </button>
+                      </div>
+                      <div className="flex-1 p-5 space-y-3">
+                        {selectedConversation.messages.map((message, index) => (
+                          <div key={`${message.from}-${index}`} className={`flex ${message.from === 'agent' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                              message.from === 'agent'
+                                ? 'bg-emerald-600 text-white rounded-br-sm'
+                                : 'bg-white text-gray-700 rounded-bl-sm border border-gray-100'
+                            }`}>
+                              {message.text}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="p-4 bg-white border-t border-gray-100 flex gap-2">
+                        <input
+                          value="Posso te mandar duas opções de kit com calorias e valores?"
+                          readOnly
+                          className="flex-1 bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <button className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center hover:bg-emerald-700">
+                          <Send size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {whatsappEnvironment === 'agentes' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {whatsappAgents.map(agent => (
+                      <div key={agent.name} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{agent.role}</p>
+                            <h3 className="text-xl font-black text-gray-900 mt-1">{agent.name}</h3>
+                          </div>
+                          <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${
+                            agent.status === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {agent.status}
+                          </span>
+                        </div>
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Tom de voz</p>
+                            <p className="text-sm text-gray-700">{agent.tone}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Objetivo</p>
+                            <p className="text-sm text-gray-700">{agent.goal}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Route className="text-emerald-600" size={20} />
+                      Roteamento de intenção
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {[
+                        { title: 'Entrada', text: 'Lia entende saudação, urgência, bairro e intenção inicial.' },
+                        { title: 'Compra', text: 'Dúvidas de cardápio, preço e entrega seguem para Nina.' },
+                        { title: 'Problema', text: 'Atraso, reclamação ou cancelamento seguem para Caio e podem chamar humano.' },
+                      ].map(rule => (
+                        <div key={rule.title} className="p-4 bg-gray-50 rounded-2xl">
+                          <p className="font-bold text-gray-900">{rule.title}</p>
+                          <p className="text-sm text-gray-500 mt-1">{rule.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {whatsappEnvironment === 'base' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Store className="text-emerald-600" size={20} />
+                      Cardápio para IA
+                    </h3>
+                    <div className="space-y-3">
+                      {stock.slice(0, 5).map(item => (
+                        <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                          <div>
+                            <p className="font-bold text-gray-900 capitalize">{item.name}</p>
+                            <p className="text-xs text-gray-400">Estoque {item.currentStock} un</p>
+                          </div>
+                          <span className="text-sm font-black text-emerald-600">
+                            R$ {item.price?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Tag className="text-emerald-600" size={20} />
+                      Promoções e argumentos
+                    </h3>
+                    {[
+                      ['Primeira compra', '10% off acima de R$ 120'],
+                      ['Recuperação 48h', 'Frete grátis para orçamento parado'],
+                      ['Combo família', 'Leve 15 marmitas e ganhe 2 snacks'],
+                    ].map(([title, detail]) => (
+                      <div key={title} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl mb-3">
+                        <div>
+                          <p className="font-bold text-gray-900">{title}</p>
+                          <p className="text-xs text-gray-500">{detail}</p>
+                        </div>
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">Ativa</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {whatsappEnvironment === 'automacoes' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    ['Carrinho sem resposta', 'Enviar lembrete 2h depois com prova social e opção de finalizar.'],
+                    ['Cliente parado 15 dias', 'Oferecer kit semanal com promoção leve e preferência anterior.'],
+                    ['Pós-entrega', 'Perguntar satisfação, registrar nota e pedir indicação quando for positivo.'],
+                    ['Estoque baixo', 'Evitar vender item indisponível e sugerir alternativa equivalente.'],
+                  ].map(([title, text]) => (
+                    <div key={title} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                      <Zap className="text-amber-500 mb-4" size={24} />
+                      <h3 className="font-bold text-gray-900">{title}</h3>
+                      <p className="text-sm text-gray-500 mt-2">{text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {whatsappEnvironment === 'integracoes' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                      ['Evolution API', 'Instância, QR Code, webhooks e envio de mensagens.', PlugZap],
+                      ['ChatGPT', 'Prompt por agente, ferramentas e memória do cliente.', Brain],
+                      ['Campanhas', 'Promoções, recuperação e disparos segmentados.', Megaphone],
+                    ].map(([title, text, Icon]) => (
+                      <div key={title as string} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                        <Icon className="text-emerald-600 mb-4" size={24} />
+                        <h3 className="font-bold text-gray-900">{title as string}</h3>
+                        <p className="text-sm text-gray-500 mt-2">{text as string}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4">Preparação operacional</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input readOnly value="AtelieFit-01" className="bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
+                      <input readOnly value="WhatsApp do atendimento" className="bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
+                      <input readOnly value="/api/whatsapp/evolution/webhook" className="md:col-span-2 bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
