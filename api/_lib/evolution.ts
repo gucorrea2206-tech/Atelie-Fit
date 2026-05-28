@@ -1,4 +1,4 @@
-import { requireEnv } from "./env";
+import { requireEnv } from "./env.js";
 
 export async function sendWhatsAppText(remoteJid: string, text: string) {
   const baseUrl = requireEnv("EVOLUTION_API_URL").replace(/\/$/, "");

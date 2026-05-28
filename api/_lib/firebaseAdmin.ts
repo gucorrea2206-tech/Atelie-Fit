@@ -1,6 +1,6 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { requireEnv } from "./env";
+import { requireEnv } from "./env.js";
 
 function getPrivateKey() {
   return requireEnv("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n");

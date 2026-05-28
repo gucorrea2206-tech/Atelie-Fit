@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getAdminDb } from "../_lib/firebaseAdmin";
-import { optionalEnv } from "../_lib/env";
-import { decideAgentReply } from "../_lib/openai";
-import { sendWhatsAppText } from "../_lib/evolution";
+import { getAdminDb } from "../_lib/firebaseAdmin.js";
+import { optionalEnv } from "../_lib/env.js";
+import { decideAgentReply } from "../_lib/openai.js";
+import { sendWhatsAppText } from "../_lib/evolution.js";
 
 function normalizeMessage(payload: any) {
   const data = payload?.data || payload;

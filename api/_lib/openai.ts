@@ -1,4 +1,4 @@
-import { requireEnv } from "./env";
+import { requireEnv } from "./env.js";
 
 export type Intent = "vendas" | "suporte" | "recuperacao" | "humano" | "triagem";
 

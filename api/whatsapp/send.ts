@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getAdminDb } from "../_lib/firebaseAdmin";
-import { sendWhatsAppText } from "../_lib/evolution";
+import { getAdminDb } from "../_lib/firebaseAdmin.js";
+import { sendWhatsAppText } from "../_lib/evolution.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {

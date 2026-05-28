@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { missingEnv } from "../_lib/env";
+import { missingEnv } from "../_lib/env.js";
 
 const requiredEnv = [
   "OPENAI_API_KEY",
