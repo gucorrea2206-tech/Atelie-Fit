@@ -1,13 +1,14 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { requireEnv } from "./env.js";
+import { optionalEnv, requireEnv } from "./env.js";
 
 function getPrivateKey() {
   return requireEnv("FIREBASE_PRIVATE_KEY").replace(/\\n/g, "\n");
 }
 
 export function getAdminDb() {
-  if (!getApps().length) {
+  const app =
+    getApps()[0] ||
     initializeApp({
       credential: cert({
         projectId: requireEnv("FIREBASE_PROJECT_ID"),
@@ -15,7 +16,7 @@ export function getAdminDb() {
         privateKey: getPrivateKey(),
       }),
     });
-  }
 
-  return getFirestore();
+  const databaseId = optionalEnv("FIREBASE_FIRESTORE_DATABASE_ID");
+  return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 }

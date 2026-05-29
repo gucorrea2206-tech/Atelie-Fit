@@ -9,6 +9,7 @@ const requiredEnv = [
   "FIREBASE_PROJECT_ID",
   "FIREBASE_CLIENT_EMAIL",
   "FIREBASE_PRIVATE_KEY",
+  "FIREBASE_FIRESTORE_DATABASE_ID",
 ];
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
