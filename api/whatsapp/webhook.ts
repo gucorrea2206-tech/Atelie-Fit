@@ -3,6 +3,7 @@ import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { optionalEnv } from "../_lib/env.js";
 import { decideAgentReply } from "../_lib/openai.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
+import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
 
 export const config = {
   maxDuration: 60,
@@ -68,9 +69,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       createdAt: new Date().toISOString(),
     });
 
+    const aiConfig = await getWhatsappAiConfig();
     const decision = await decideAgentReply(normalized.text, {
       remoteJid: normalized.remoteJid,
       pushName: normalized.pushName,
+      aiConfig,
     });
 
     await conversationRef.set(

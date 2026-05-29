@@ -1,4 +1,5 @@
 import { requireEnv } from "./env.js";
+import type { WhatsAppAiConfig } from "./whatsappAiConfig.js";
 
 export type Intent = "vendas" | "suporte" | "recuperacao" | "humano" | "triagem";
 
@@ -11,7 +12,7 @@ export interface AgentDecision {
   reason: string;
 }
 
-const systemInstructions = `
+const fallbackInstructions = `
 Voce atende clientes do Atelie Fit pelo WhatsApp.
 O negocio vende marmitas fit, kits semanais, combos e lanches saudaveis.
 
@@ -27,6 +28,53 @@ Regras:
 - Se houver reclamacao forte, pedido errado, atraso serio ou cliente irritado, marque humano.
 - Responda somente JSON valido com: intent, agent, shouldReply, reply, confidence, reason.
 `;
+
+function buildSystemInstructions(config?: WhatsAppAiConfig) {
+  if (!config) return fallbackInstructions;
+
+  const enabledAgents = config.agents.filter((agent) => agent.enabled);
+  const agentInstructions = enabledAgents
+    .map(
+      (agent) => `- ${agent.name} (${agent.role})
+  Tom: ${agent.tone}
+  Objetivo: ${agent.goal}
+  Prompt: ${agent.prompt}`
+    )
+    .join("\n");
+
+  const knowledge = config.knowledge;
+
+  return `
+Voce atende clientes do ${config.businessName || "Atelie Fit"} pelo WhatsApp.
+Use a configuracao abaixo como fonte de verdade. Nao invente cardapio, preco, promocao, entrega ou politica fora da base.
+
+Tom geral: ${config.tone}
+Agente inicial: ${config.defaultAgent}
+
+Agentes habilitados:
+${agentInstructions || fallbackInstructions}
+
+Base comercial:
+Cardapio: ${knowledge.menu || "Usar apenas informacoes confirmadas pelo sistema."}
+Precos e combos: ${knowledge.prices || "Nao informar valores sem confirmacao."}
+Promocoes: ${knowledge.promotions || "Nao oferecer promocao sem confirmacao."}
+Entrega: ${knowledge.delivery || "Coletar bairro antes de prometer prazo ou taxa."}
+Politicas: ${knowledge.policies || "Encaminhar casos sensiveis para humano."}
+Recuperacao: ${knowledge.recovery || "Nao insistir se o cliente recusar."}
+
+Roteamento:
+- Lia faz triagem inicial e identifica intencao.
+- Nina responde vendas, cardapio, precos, combos e entrega.
+- Caio responde suporte, atraso, reclamacao, troca, cancelamento e problemas.
+- Maya responde recuperacao de clientes parados e orcamentos sem resposta.
+- Use Humano quando houver irritacao, reclamacao forte, risco de erro financeiro ou falta de informacao confiavel.
+
+Regras:
+- Seja curto, humano e natural para WhatsApp.
+- Use o agente mais adequado para a mensagem atual.
+- Responda somente JSON valido com: intent, agent, shouldReply, reply, confidence, reason.
+`;
+}
 
 function fallbackDecision(message: string): AgentDecision {
   const lowerMessage = message.toLowerCase();
@@ -70,6 +118,7 @@ function fallbackDecision(message: string): AgentDecision {
 export async function decideAgentReply(message: string, context: Record<string, unknown> = {}): Promise<AgentDecision> {
   const apiKey = requireEnv("OPENAI_API_KEY");
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const aiConfig = context.aiConfig as WhatsAppAiConfig | undefined;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
 
@@ -83,7 +132,7 @@ export async function decideAgentReply(message: string, context: Record<string, 
       },
       body: JSON.stringify({
         model,
-        instructions: systemInstructions,
+        instructions: buildSystemInstructions(aiConfig),
         max_output_tokens: 220,
         input: [
           {

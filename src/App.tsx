@@ -22,6 +22,7 @@ import {
   query, 
   orderBy, 
   addDoc, 
+  setDoc,
   serverTimestamp, 
   deleteDoc,
   updateDoc,
@@ -188,6 +189,54 @@ const whatsappAgents = [
   },
 ];
 
+type WhatsAppAgentConfig = {
+  name: string;
+  role: string;
+  status: 'Ativo' | 'Revisão';
+  tone: string;
+  goal: string;
+  prompt: string;
+  enabled: boolean;
+};
+
+type WhatsAppKnowledgeConfig = {
+  menu: string;
+  prices: string;
+  promotions: string;
+  delivery: string;
+  policies: string;
+  recovery: string;
+};
+
+const defaultWhatsappAgents: WhatsAppAgentConfig[] = whatsappAgents.map(agent => ({
+  ...agent,
+  status: agent.status as 'Ativo' | 'Revisão',
+  enabled: agent.status === 'Ativo',
+  prompt:
+    agent.name === 'Lia' ? 'Identifique a intenção inicial, colete bairro e necessidade principal. Direcione para vendas, suporte, recuperação ou humano quando necessário.' :
+    agent.name === 'Nina' ? 'Atenda dúvidas de cardápio, preços, kits, combos, entrega e objetivos alimentares. Recomende opções usando apenas a base comercial cadastrada.' :
+    agent.name === 'Caio' ? 'Resolva problemas de atraso, pedido incorreto, troca, cancelamento e reclamações. Seja calmo, peça dados essenciais e acione humano em casos sensíveis.' :
+    'Recupere clientes parados e orçamentos sem resposta com abordagem gentil, objetiva e sem insistência.',
+}));
+
+const defaultWhatsappKnowledge: WhatsAppKnowledgeConfig = {
+  menu: '',
+  prices: '',
+  promotions: '',
+  delivery: '',
+  policies: '',
+  recovery: '',
+};
+
+const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: string; description: string; placeholder: string }[] = [
+  { key: 'menu', title: 'Cardápio', description: 'Itens disponíveis, ingredientes e observações.', placeholder: 'Ex: Frango grelhado com legumes - marmita low carb...' },
+  { key: 'prices', title: 'Preços e combos', description: 'Valores, kits semanais e regras de pedido mínimo.', placeholder: 'Ex: Kit 5 marmitas R$ 119,90; Kit 10 marmitas R$ 219,90...' },
+  { key: 'promotions', title: 'Promoções', description: 'Campanhas ativas e argumentos comerciais.', placeholder: 'Ex: Primeira compra com 10% off acima de R$ 120...' },
+  { key: 'delivery', title: 'Entrega', description: 'Bairros, horários, taxas e retirada.', placeholder: 'Ex: Entregas de segunda a sábado, taxa Centro R$ 8...' },
+  { key: 'policies', title: 'Políticas', description: 'Troca, cancelamento, validade, congelamento e pagamento.', placeholder: 'Ex: Cancelamentos até 24h antes; pagamento via Pix...' },
+  { key: 'recovery', title: 'Recuperação', description: 'Ofertas e abordagem para clientes parados.', placeholder: 'Ex: Clientes sem compra há 15 dias recebem sugestão de kit semanal...' },
+];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -201,6 +250,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'whatsapp'>('dashboard');
   const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('atendimento');
   const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState(1);
+  const [whatsappAgentConfigs, setWhatsappAgentConfigs] = useState<WhatsAppAgentConfig[]>(defaultWhatsappAgents);
+  const [whatsappKnowledge, setWhatsappKnowledge] = useState<WhatsAppKnowledgeConfig>(defaultWhatsappKnowledge);
+  const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
+  const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
   const [vendasSubTab, setVendasSubTab] = useState<'lancar' | 'registros'>('lancar');
   const [shoppingSubTab, setShoppingSubTab] = useState<'produtos' | 'fornecedores' | 'lista'>('lista');
@@ -300,6 +353,23 @@ export default function App() {
       setSales(sls);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
+    const unsubWhatsappAiConfig = onSnapshot(doc(db, 'whatsapp_ai_config', 'main'), (snapshot) => {
+      if (!snapshot.exists()) return;
+      const data = snapshot.data();
+      if (Array.isArray(data.agents)) {
+        setWhatsappAgentConfigs(defaultWhatsappAgents.map(defaultAgent => ({
+          ...defaultAgent,
+          ...(data.agents.find((agent: WhatsAppAgentConfig) => agent.name === defaultAgent.name) || {}),
+        })));
+      }
+      if (data.knowledge) {
+        setWhatsappKnowledge({ ...defaultWhatsappKnowledge, ...data.knowledge });
+      }
+      if (data.updatedAt) {
+        setWhatsappAiSavedAt(data.updatedAt);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'whatsapp_ai_config'));
+
     return () => {
       unsubProducts();
       unsubMovements();
@@ -308,6 +378,7 @@ export default function App() {
       unsubShoppingProducts();
       unsubBills();
       unsubSales();
+      unsubWhatsappAiConfig();
     };
   }, [user]);
 
@@ -348,6 +419,49 @@ export default function App() {
       console.error(err);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleWhatsappAgentChange = (agentName: string, field: keyof WhatsAppAgentConfig, value: string | boolean) => {
+    setWhatsappAgentConfigs(currentAgents =>
+      currentAgents.map(agent =>
+        agent.name === agentName
+          ? {
+              ...agent,
+              [field]: value,
+              ...(field === 'enabled' ? { status: value ? 'Ativo' : 'Revisão' } : {}),
+            }
+          : agent
+      )
+    );
+  };
+
+  const handleWhatsappKnowledgeChange = (field: keyof WhatsAppKnowledgeConfig, value: string) => {
+    setWhatsappKnowledge(currentKnowledge => ({
+      ...currentKnowledge,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveWhatsappAiConfig = async () => {
+    setIsSavingWhatsappAi(true);
+    setError(null);
+    try {
+      const updatedAt = new Date().toISOString();
+      await setDoc(doc(db, 'whatsapp_ai_config', 'main'), {
+        active: true,
+        businessName: 'Ateliê Fit',
+        defaultAgent: 'Lia',
+        tone: 'humano, curto, simpático e consultivo',
+        agents: whatsappAgentConfigs,
+        knowledge: whatsappKnowledge,
+        updatedAt,
+      }, { merge: true });
+      setWhatsappAiSavedAt(updatedAt);
+    } catch (err: any) {
+      setError(`Erro ao salvar WhatsApp IA: ${err.message || 'falha ao salvar configuração'}`);
+    } finally {
+      setIsSavingWhatsappAi(false);
     }
   };
 
@@ -2303,12 +2417,21 @@ export default function App() {
                     <PlugZap size={18} />
                     Testar Evolution
                   </button>
-                  <button className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">
-                    <Check size={18} />
-                    Salvar
+                  <button
+                    onClick={handleSaveWhatsappAiConfig}
+                    disabled={isSavingWhatsappAi}
+                    className="flex items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-60"
+                  >
+                    {isSavingWhatsappAi ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                    {isSavingWhatsappAi ? 'Salvando' : 'Salvar'}
                   </button>
                 </div>
               </div>
+              {whatsappAiSavedAt && (
+                <p className="text-xs text-gray-400 -mt-4">
+                  Configuração salva em {format(new Date(whatsappAiSavedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                </p>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
@@ -2438,27 +2561,49 @@ export default function App() {
               {whatsappEnvironment === 'agentes' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {whatsappAgents.map(agent => (
+                    {whatsappAgentConfigs.map(agent => (
                       <div key={agent.name} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div>
                             <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{agent.role}</p>
                             <h3 className="text-xl font-black text-gray-900 mt-1">{agent.name}</h3>
                           </div>
-                          <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${
-                            agent.status === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {agent.status}
-                          </span>
+                          <label className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase">
+                            <input
+                              type="checkbox"
+                              checked={agent.enabled}
+                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'enabled', event.target.checked)}
+                              className="w-4 h-4 accent-emerald-600"
+                            />
+                            {agent.enabled ? 'Ativo' : 'Revisão'}
+                          </label>
                         </div>
                         <div className="space-y-3">
                           <div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase">Tom de voz</p>
-                            <p className="text-sm text-gray-700">{agent.tone}</p>
+                            <input
+                              value={agent.tone}
+                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'tone', event.target.value)}
+                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none"
+                            />
                           </div>
                           <div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase">Objetivo</p>
-                            <p className="text-sm text-gray-700">{agent.goal}</p>
+                            <textarea
+                              value={agent.goal}
+                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'goal', event.target.value)}
+                              rows={2}
+                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Prompt do agente</p>
+                            <textarea
+                              value={agent.prompt}
+                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'prompt', event.target.value)}
+                              rows={5}
+                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                            />
                           </div>
                         </div>
                       </div>
@@ -2491,7 +2636,7 @@ export default function App() {
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <Store className="text-emerald-600" size={20} />
-                      Cardápio para IA
+                      Cardápio conectado
                     </h3>
                     <div className="space-y-3">
                       {stock.slice(0, 5).map(item => (
@@ -2506,26 +2651,33 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-gray-400 mt-4">
+                      A IA também usa os produtos e preços cadastrados no estoque. Use os campos ao lado para complementar regras e ofertas.
+                    </p>
                   </div>
 
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <Tag className="text-emerald-600" size={20} />
-                      Promoções e argumentos
+                      Base de conhecimento
                     </h3>
-                    {[
-                      ['Primeira compra', '10% off acima de R$ 120'],
-                      ['Recuperação 48h', 'Frete grátis para orçamento parado'],
-                      ['Combo família', 'Leve 15 marmitas e ganhe 2 snacks'],
-                    ].map(([title, detail]) => (
-                      <div key={title} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl mb-3">
-                        <div>
-                          <p className="font-bold text-gray-900">{title}</p>
-                          <p className="text-xs text-gray-500">{detail}</p>
+                    <div className="space-y-4">
+                      {whatsappKnowledgeSections.map(section => (
+                        <div key={section.key}>
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">{section.title}</p>
+                            <p className="text-xs text-gray-500 mb-2">{section.description}</p>
+                          </div>
+                          <textarea
+                            value={whatsappKnowledge[section.key]}
+                            onChange={(event) => handleWhatsappKnowledgeChange(section.key, event.target.value)}
+                            placeholder={section.placeholder}
+                            rows={4}
+                            className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                          />
                         </div>
-                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">Ativa</span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
