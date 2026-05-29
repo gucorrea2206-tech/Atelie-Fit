@@ -29,7 +29,7 @@ import {
   doc,
   Timestamp
 } from 'firebase/firestore';
-import { interpretStockText, AIInterpretation, analyzeBillImage, AIBillItem } from './gemini';
+import { interpretStockText, AIInterpretation, analyzeBillImage, AIBillItem } from './operationalAi';
 import { 
   Plus, 
   Minus, 
