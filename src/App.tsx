@@ -255,7 +255,7 @@ export default function App() {
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
-  const [vendasSubTab, setVendasSubTab] = useState<'lancar' | 'registros'>('lancar');
+  const [vendasSubTab, setVendasSubTab] = useState<'promokit' | 'registros'>('promokit');
   const [shoppingSubTab, setShoppingSubTab] = useState<'produtos' | 'fornecedores' | 'lista'>('lista');
   const [billsSubTab, setBillsSubTab] = useState<'lista' | 'pagas' | 'cadastrar'>('lista');
   const [inputText, setInputText] = useState('');
@@ -281,6 +281,14 @@ export default function App() {
   // Sales State
   const [sales, setSales] = useState<Sale[]>([]);
   const [newSale, setNewSale] = useState({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
+  const [isSyncingPromokit, setIsSyncingPromokit] = useState(false);
+  const [promokitLastOrderCode, setPromokitLastOrderCode] = useState('');
+  const [promokitSyncResult, setPromokitSyncResult] = useState<{
+    count: number;
+    savedCodes: string[];
+    processedSales: { code: string; createdSale: boolean; movementCount: number; syncedProductCount: number }[];
+    nextLastOrderCode: string;
+  } | null>(null);
 
   // Dashboard State
   const [startDate, setStartDate] = useState<string>(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
@@ -419,6 +427,35 @@ export default function App() {
       console.error(err);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleSyncPromokitOrders = async () => {
+    setIsSyncingPromokit(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/promokit/sync-new-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lastOrderCode: promokitLastOrderCode.trim() || undefined,
+          take: 10,
+          status: 'novo',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao sincronizar pedidos da Promokit.');
+      }
+
+      setPromokitSyncResult(data);
+      setPromokitLastOrderCode(data.nextLastOrderCode || '');
+    } catch (err: any) {
+      setError(err.message || 'Erro ao sincronizar Promokit.');
+    } finally {
+      setIsSyncingPromokit(false);
     }
   };
 
@@ -1286,7 +1323,7 @@ export default function App() {
               className="space-y-6"
             >
               <div className="flex p-1 bg-gray-100 rounded-2xl w-full max-w-2xl mx-auto">
-                {(['lancar', 'registros'] as const).map((sub) => (
+                {(['promokit', 'registros'] as const).map((sub) => (
                   <button
                     key={sub}
                     onClick={() => setVendasSubTab(sub)}
@@ -1296,153 +1333,122 @@ export default function App() {
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    {sub === 'lancar' ? 'Lançar Venda' : 'Registros de Vendas'}
+                    {sub === 'promokit' ? 'Promokit' : 'Registros de Vendas'}
                   </button>
                 ))}
               </div>
 
               <AnimatePresence mode="wait">
-                {vendasSubTab === 'lancar' && (
+                {vendasSubTab === 'promokit' && (
                   <motion.div 
-                    key="lancar-venda"
+                    key="promokit-venda"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
                     className="space-y-6"
                   >
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 rounded-lg bg-red-100 text-red-600">
-                          <Minus size={20} />
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
+                            <RefreshCcw size={20} />
+                          </div>
+                          <div>
+                            <h2 className="text-lg font-bold text-gray-900">Vendas automáticas da Promokit</h2>
+                            <p className="text-sm text-gray-500">Pedidos novos viram venda e baixam o estoque pelo produto sincronizado.</p>
+                          </div>
                         </div>
-                        <h2 className="text-lg font-bold text-gray-900">Lançar Novo Pedido</h2>
+                        <button
+                          disabled={isSyncingPromokit}
+                          onClick={handleSyncPromokitOrders}
+                          className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 transition-all disabled:opacity-50"
+                        >
+                          {isSyncingPromokit ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
+                          Sincronizar agora
+                        </button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Cliente</label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-gray-50 p-4 rounded-2xl">
+                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Pedidos Promokit</p>
+                          <p className="text-2xl font-black text-gray-900">
+                            {sales.filter(sale => sale.source === 'promokit').length}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">já lançados em vendas</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-2xl">
+                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Produtos conectados</p>
+                          <p className="text-2xl font-black text-emerald-600">
+                            {products.filter(product => product.promokitProductId || product.promokitPdvCode).length + kits.filter(kit => kit.promokitProductId || kit.promokitPdvCode).length}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">com vínculo Promokit</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-2xl">
+                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último código</p>
                           <input 
                             type="text"
-                            value={newSale.customerName}
-                            onChange={(e) => setNewSale({...newSale, customerName: e.target.value})}
-                            placeholder="Nome do Cliente"
-                            className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
+                            value={promokitLastOrderCode}
+                            onChange={(e) => setPromokitLastOrderCode(e.target.value)}
+                            placeholder="Automático"
+                            className="w-full mt-2 p-3 bg-white rounded-xl border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
                           />
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Valor Recebido</label>
-                          <input 
-                            type="number"
-                            value={newSale.value}
-                            onChange={(e) => setNewSale({...newSale, value: e.target.value})}
-                            placeholder="R$ 0,00"
-                            className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Data</label>
-                          <input 
-                            type="date"
-                            value={newSale.saleDate}
-                            onChange={(e) => setNewSale({...newSale, saleDate: e.target.value})}
-                            className="w-full p-4 bg-gray-50 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-400 uppercase ml-1">Produtos (IA)</label>
-                        <textarea
-                          value={inputText}
-                          onChange={(e) => setInputText(e.target.value)}
-                          placeholder="Ex: Saiu 2 parmegiana e 1 escondidinho..."
-                          className="w-full h-32 p-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-emerald-500 transition-all resize-none text-gray-700"
-                        />
                       </div>
 
-                      <button
-                        disabled={isProcessing || !inputText.trim() || !newSale.customerName.trim()}
-                        onClick={() => handleProcessIA('saida')}
-                        className="w-full mt-4 flex items-center justify-center gap-2 py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-black transition-all disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 className="animate-spin" size={20} /> : <Brain size={20} />}
-                        Processar e Lançar
-                      </button>
+                      {promokitSyncResult && (
+                        <div className="mt-5 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                          <div className="flex items-center gap-2 text-emerald-800 font-bold mb-2">
+                            <CheckCircle2 size={18} />
+                            Sincronização concluída
+                          </div>
+                          <p className="text-sm text-emerald-700">
+                            {promokitSyncResult.count} pedido(s) lido(s). Próximo código: {promokitSyncResult.nextLastOrderCode}.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {promokitSyncResult.processedSales.map(item => (
+                              <span key={item.code} className="text-xs bg-white text-emerald-700 border border-emerald-100 px-3 py-1 rounded-lg font-bold">
+                                #{item.code} {item.createdSale ? 'lançado' : 'já existia'} · {item.movementCount} baixa(s)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {preview && preview.tipo === 'saida' && (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="bg-emerald-50 p-6 rounded-3xl border-2 border-emerald-200"
-                      >
-                        <h3 className="font-bold text-emerald-900 mb-4 flex items-center gap-2">
-                          <Check size={20} /> Confirmar Pedido de {newSale.customerName}
-                        </h3>
-                        <div className="space-y-3 mb-6">
-                          {preview.itens.map((item, idx) => {
-                            const kit = item.isKit ? kits.find(k => 
-                              k.name.toLowerCase().trim() === item.produto.toLowerCase().trim() ||
-                              k.name.toLowerCase().includes(item.produto.toLowerCase()) ||
-                              item.produto.toLowerCase().includes(k.name.toLowerCase())
-                            ) : null;
-                            
-                            return (
-                              <div key={idx} className="bg-white/50 p-4 rounded-2xl border border-emerald-100">
-                                <div className="flex justify-between items-center mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="capitalize text-emerald-800 font-bold">{item.produto}</span>
-                                    {item.isKit && <span className="text-[10px] bg-emerald-200 text-emerald-700 px-2 py-0.5 rounded-full font-bold uppercase">Kit</span>}
-                                  </div>
-                                  <span className="font-bold text-emerald-900">{item.quantidade} un</span>
-                                </div>
-
-                                {item.isKit && kit && (
-                                  <div className="mt-2 pl-4 border-l-2 border-emerald-200 space-y-1">
-                                    {kit.items.map((kitItem, kIdx) => {
-                                      const originalProd = products.find(p => p.id === kitItem.productId);
-                                      const sub = item.substituicoes?.find(s => 
-                                        originalProd?.name.toLowerCase().includes(s.remover.toLowerCase()) ||
-                                        s.remover.toLowerCase().includes(originalProd?.name.toLowerCase() || '')
-                                      );
-                                      
-                                      return (
-                                        <div key={kIdx} className="text-xs flex items-center gap-2">
-                                          <ChevronRight size={12} className="text-emerald-400" />
-                                          {sub ? (
-                                            <div className="flex items-center gap-1">
-                                              <span className="line-through text-gray-400">{originalProd?.name}</span>
-                                              <span className="text-emerald-600 font-bold">→ {sub.adicionar}</span>
-                                            </div>
-                                          ) : (
-                                            <span className="text-gray-600">{originalProd?.name}</span>
-                                          )}
-                                          <span className="text-gray-400 font-medium">({kitItem.quantity * item.quantidade} un)</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="flex gap-3">
-                          <button 
-                            onClick={() => setPreview(null)}
-                            className="flex-1 py-3 bg-white text-gray-600 rounded-xl font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
-                          >
-                            Cancelar
-                          </button>
-                          <button 
-                            onClick={confirmMovements}
-                            className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200"
-                          >
-                            Confirmar Venda
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                      <h3 className="text-lg font-bold text-gray-900 mb-4">Cardápio sincronizado</h3>
+                      <div className="space-y-3">
+                        {products.filter(product => product.promokitProductId || product.promokitPdvCode).slice(0, 8).map(product => (
+                          <div key={product.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-2xl">
+                            <div>
+                              <p className="font-bold text-gray-900 capitalize">{product.name}</p>
+                              <p className="text-xs text-gray-400">
+                                Promokit {product.promokitProductId || product.promokitPdvCode} · Estoque {stock.find(item => item.id === product.id)?.currentStock || 0} un
+                              </p>
+                            </div>
+                            <span className="text-sm font-black text-emerald-600">
+                              R$ {(product.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ))}
+                        {kits.filter(kit => kit.promokitProductId || kit.promokitPdvCode).slice(0, 4).map(kit => (
+                          <div key={kit.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-2xl">
+                            <div>
+                              <p className="font-bold text-gray-900 capitalize">{kit.name}</p>
+                              <p className="text-xs text-gray-400">
+                                Kit Promokit {kit.promokitProductId || kit.promokitPdvCode} · baixa {kit.items.length} item(ns) do estoque
+                              </p>
+                            </div>
+                            <span className="text-sm font-black text-emerald-600">
+                              R$ {(kit.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ))}
+                        {products.filter(product => product.promokitProductId || product.promokitPdvCode).length === 0 && kits.filter(kit => kit.promokitProductId || kit.promokitPdvCode).length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-6">Nenhum produto da Promokit sincronizado ainda.</p>
+                        )}
+                      </div>
+                    </div>
                   </motion.div>
                 )}
 

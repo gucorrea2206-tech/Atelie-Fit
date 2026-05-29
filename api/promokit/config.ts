@@ -10,6 +10,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
     ...getPromokitEnvStatus(),
     endpoints: {
       syncOrders: "/api/promokit/sync-orders",
+      syncNewOrders: "/api/promokit/sync-new-orders",
       getOrder: "/api/promokit/order?code=CODIGO",
       updateOrderStatus: "/api/promokit/update-order-status",
       updateProductAvailability: "/api/promokit/update-product-availability",

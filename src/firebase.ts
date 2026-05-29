@@ -27,6 +27,11 @@ export interface Product {
   id: string;
   name: string;
   price?: number;
+  source?: string;
+  normalizedName?: string;
+  promokitProductId?: string | null;
+  promokitPdvCode?: string | null;
+  promokitName?: string | null;
   createdAt: Timestamp;
 }
 
@@ -36,6 +41,10 @@ export interface Movement {
   type: 'entrada' | 'saida';
   quantity: number;
   saleId?: string;
+  source?: string;
+  promokitOrderCode?: string;
+  promokitItemId?: string | null;
+  promokitProductId?: string | null;
   referenceDate?: Timestamp;
   createdAt: Timestamp;
 }
@@ -53,6 +62,10 @@ export interface Kit {
   id: string;
   name: string;
   price?: number;
+  source?: string;
+  promokitProductId?: string | null;
+  promokitPdvCode?: string | null;
+  promokitName?: string | null;
   items: KitItem[];
   createdAt: Timestamp;
 }
@@ -91,6 +104,11 @@ export interface Sale {
   value: number;
   totalQuantity: number;
   itemsDescription: string;
+  source?: string;
+  promokitOrderCode?: string;
+  promokitStatus?: string;
+  promokitPaid?: boolean;
+  promokitCustomerId?: string | null;
   saleDate: Timestamp;
   createdAt: Timestamp;
 }

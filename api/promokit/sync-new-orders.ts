@@ -1,33 +1,19 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
-
-function normalizePhone(order: any) {
-  return (
-    order?.cliente?.telefone ||
-    order?.cliente?.celular ||
-    order?.cliente?.whatsapp ||
-    order?.telefone ||
-    order?.whatsapp ||
-    ""
-  );
-}
 
 async function saveOrder(order: any) {
   const db = getAdminDb();
   const code = String(order.codigo || order.code || order.id || "");
   if (!code) return null;
 
-  const phone = normalizePhone(order);
-  const customerId = String(order?.cliente?.id || phone || code);
-
   await db.collection("promokit_orders").doc(code).set(
     {
       code,
-      customerId,
+      customerId: String(order?.cliente?.id || code),
       customerName: order?.cliente?.nome || "",
-      customerPhone: phone,
       status: order.status || "",
       statusOrdem: order.statusOrdem ?? null,
       total: order.total ?? null,
@@ -42,20 +28,7 @@ async function saveOrder(order: any) {
       payments: order.pagamentos || [],
       address: order.endereco || null,
       raw: order,
-      syncedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
-
-  await db.collection("promokit_customers").doc(customerId).set(
-    {
-      id: customerId,
-      name: order?.cliente?.nome || "",
-      phone,
-      lastOrderCode: code,
-      lastOrderAt: order.horario || null,
-      lastOrderTotal: order.total ?? null,
-      updatedAt: new Date().toISOString(),
+      syncedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -69,11 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const db = getAdminDb();
     const input = req.method === "POST" ? req.body || {} : req.query;
-    const lastOrderCode = String(input.lastOrderCode || input.ultimoPedido || "1");
-    const take = Number(input.take || input.t || 10);
     const status = String(input.status || input.st || "novo");
-    const processSales = input.processSales !== false && input.processSales !== "false";
+    const take = Number(input.take || input.t || 10);
+    const stateRef = db.collection("promokit_sync_state").doc(status);
+    const state = await stateRef.get();
+    const lastOrderCode = String(input.lastOrderCode || state.data()?.lastOrderCode || "1");
 
     const response = await listPromokitLatestOrders({ lastOrderCode, take, status });
     const orders = response?.data?.pedidos || response?.pedidos || [];
@@ -87,22 +62,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const savedCode = await saveOrder(order);
       if (savedCode) savedCodes.push(savedCode);
 
-      if (processSales && savedCode) {
-        const processResult = await processPromokitOrder(order);
-        if (processResult) processedSales.push(processResult);
-      }
+      const processResult = await processPromokitOrder(order);
+      if (processResult) processedSales.push(processResult);
     }
+
+    const nextLastOrderCode = savedCodes[savedCodes.length - 1] || lastOrderCode;
+    await stateRef.set(
+      {
+        status,
+        lastOrderCode: nextLastOrderCode,
+        lastRunAt: FieldValue.serverTimestamp(),
+        lastCount: savedCodes.length,
+      },
+      { merge: true }
+    );
 
     return res.status(200).json({
       ok: true,
+      status,
+      previousLastOrderCode: lastOrderCode,
+      nextLastOrderCode,
       count: savedCodes.length,
       savedCodes,
       processedSales,
-      nextLastOrderCode: savedCodes[savedCodes.length - 1] || lastOrderCode,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Promokit sync failed";
-    console.error("Promokit sync failed", { error: message });
+    const message = error instanceof Error ? error.message : "Promokit automatic sync failed";
+    console.error("Promokit automatic sync failed", { error: message });
     return res.status(500).json({ ok: false, error: message });
   }
 }
