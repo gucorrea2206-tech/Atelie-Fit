@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/promokit/cron-sync",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
