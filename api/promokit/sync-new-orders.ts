@@ -4,16 +4,32 @@ import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
 
+function normalizePhone(order: any) {
+  return (
+    order?.cliente?.telefone ||
+    order?.cliente?.celular ||
+    order?.cliente?.whatsapp ||
+    order?.telefone ||
+    order?.whatsapp ||
+    ""
+  );
+}
+
 async function saveOrder(order: any) {
   const db = getAdminDb();
   const code = String(order.codigo || order.code || order.id || "");
   if (!code) return null;
+  const phone = normalizePhone(order);
+  const customerId = String(order?.cliente?.id || phone || code);
+  const orderRef = db.collection("promokit_orders").doc(code);
+  const alreadySaved = (await orderRef.get()).exists;
 
-  await db.collection("promokit_orders").doc(code).set(
+  await orderRef.set(
     {
       code,
-      customerId: String(order?.cliente?.id || code),
+      customerId,
       customerName: order?.cliente?.nome || "",
+      customerPhone: phone,
       status: order.status || "",
       statusOrdem: order.statusOrdem ?? null,
       total: order.total ?? null,
@@ -32,6 +48,24 @@ async function saveOrder(order: any) {
     },
     { merge: true }
   );
+
+  const customerData: Record<string, any> = {
+    id: customerId,
+    name: order?.cliente?.nome || "",
+    phone,
+    lastOrderCode: code,
+    lastOrderAt: order.horario || null,
+    lastOrderTotal: order.total ?? null,
+    address: order.endereco || null,
+    raw: order?.cliente || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (!alreadySaved) {
+    customerData.orderCount = FieldValue.increment(1);
+  }
+
+  await db.collection("promokit_customers").doc(customerId).set(customerData, { merge: true });
 
   return code;
 }

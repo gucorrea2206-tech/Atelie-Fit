@@ -114,6 +114,20 @@ export interface Sale {
   createdAt: Timestamp;
 }
 
+export interface PromokitLead {
+  id: string;
+  name: string;
+  phone?: string;
+  lastOrderCode?: string;
+  lastOrderAt?: string;
+  lastOrderTotal?: number;
+  orderCount?: number;
+  address?: any;
+  raw?: any;
+  updatedAt?: string;
+  createdAt?: string;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

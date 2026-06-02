@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
@@ -21,8 +22,10 @@ async function saveOrder(order: any) {
 
   const phone = normalizePhone(order);
   const customerId = String(order?.cliente?.id || phone || code);
+  const orderRef = db.collection("promokit_orders").doc(code);
+  const alreadySaved = (await orderRef.get()).exists;
 
-  await db.collection("promokit_orders").doc(code).set(
+  await orderRef.set(
     {
       code,
       customerId,
@@ -47,18 +50,23 @@ async function saveOrder(order: any) {
     { merge: true }
   );
 
-  await db.collection("promokit_customers").doc(customerId).set(
-    {
-      id: customerId,
-      name: order?.cliente?.nome || "",
-      phone,
-      lastOrderCode: code,
-      lastOrderAt: order.horario || null,
-      lastOrderTotal: order.total ?? null,
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  const customerData: Record<string, any> = {
+    id: customerId,
+    name: order?.cliente?.nome || "",
+    phone,
+    lastOrderCode: code,
+    lastOrderAt: order.horario || null,
+    lastOrderTotal: order.total ?? null,
+    address: order.endereco || null,
+    raw: order?.cliente || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (!alreadySaved) {
+    customerData.orderCount = FieldValue.increment(1);
+  }
+
+  await db.collection("promokit_customers").doc(customerId).set(customerData, { merge: true });
 
   return code;
 }

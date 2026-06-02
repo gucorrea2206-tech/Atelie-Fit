@@ -12,6 +12,7 @@ import {
   ShoppingProduct,
   Bill,
   Sale,
+  PromokitLead,
   handleFirestoreError, 
   OperationType 
 } from './firebase';
@@ -118,7 +119,7 @@ function ErrorDisplay({ error, onRetry }: { error: string, onRetry: () => void }
   );
 }
 
-type WhatsAppEnvironment = 'dashboard' | 'atendimento' | 'configuracoes';
+type WhatsAppEnvironment = 'dashboard' | 'atendimento' | 'leads' | 'configuracoes';
 type WhatsAppConfigTab = 'agentes' | 'base' | 'automacoes' | 'integracoes';
 
 const whatsappConversations = [
@@ -210,6 +211,18 @@ type WhatsAppKnowledgeConfig = {
   recovery: string;
 };
 
+type WhatsAppAgentKnowledgeConfig = Record<string, WhatsAppKnowledgeConfig>;
+
+type WhatsAppAutomationConfig = {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  triggerDays?: number;
+  agent: string;
+  message: string;
+};
+
 const defaultWhatsappAgents: WhatsAppAgentConfig[] = whatsappAgents.map(agent => ({
   ...agent,
   status: agent.status as 'Ativo' | 'Revisão',
@@ -229,6 +242,49 @@ const defaultWhatsappKnowledge: WhatsAppKnowledgeConfig = {
   policies: '',
   recovery: '',
 };
+
+const defaultAgentKnowledge = defaultWhatsappAgents.reduce((acc, agent) => {
+  acc[agent.name] = { ...defaultWhatsappKnowledge };
+  return acc;
+}, {} as WhatsAppAgentKnowledgeConfig);
+
+const defaultWhatsappAutomations: WhatsAppAutomationConfig[] = [
+  {
+    id: 'inactive_15_days',
+    title: 'Cliente parado 15 dias',
+    description: 'Identifica clientes sem compra recente e prepara recuperação.',
+    enabled: true,
+    triggerDays: 15,
+    agent: 'Maya',
+    message: 'Oi! Vi que faz um tempinho que você não pede com a gente. Quer que eu te mande uma sugestão de kit para esta semana?',
+  },
+  {
+    id: 'post_delivery',
+    title: 'Pós-entrega',
+    description: 'Acompanha satisfação após compra recente.',
+    enabled: false,
+    triggerDays: 1,
+    agent: 'Caio',
+    message: 'Oi! Passando para saber se deu tudo certo com seu pedido do Ateliê Fit.',
+  },
+  {
+    id: 'promo_return',
+    title: 'Cupom de retorno',
+    description: 'Segmenta clientes elegíveis para oferta de retorno.',
+    enabled: false,
+    triggerDays: 30,
+    agent: 'Maya',
+    message: 'Tenho uma condição especial para você voltar essa semana. Quer ver as opções?',
+  },
+  {
+    id: 'stock_low',
+    title: 'Estoque baixo',
+    description: 'Orienta agentes a sugerirem alternativas disponíveis.',
+    enabled: true,
+    agent: 'Nina',
+    message: 'Quando um item estiver baixo, sugerir a alternativa mais próxima disponível no estoque.',
+  },
+];
 
 const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: string; description: string; placeholder: string }[] = [
   { key: 'menu', title: 'Cardápio', description: 'Itens disponíveis, ingredientes e observações.', placeholder: 'Ex: Frango grelhado com legumes - marmita low carb...' },
@@ -294,6 +350,7 @@ const managementTabs: AppTab[] = ['config', 'compras', 'contas', 'whatsapp'];
 const whatsappSubTabs: { id: WhatsAppEnvironment; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard do WhatsApp', icon: LayoutDashboard },
   { id: 'atendimento', label: 'Atendimento', icon: MessageCircle },
+  { id: 'leads', label: 'Leads', icon: UserPlus },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ];
 const whatsappConfigTabs: { id: WhatsAppConfigTab; label: string; icon: React.ElementType }[] = [
@@ -320,6 +377,12 @@ export default function App() {
   const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState(1);
   const [whatsappAgentConfigs, setWhatsappAgentConfigs] = useState<WhatsAppAgentConfig[]>(defaultWhatsappAgents);
   const [whatsappKnowledge, setWhatsappKnowledge] = useState<WhatsAppKnowledgeConfig>(defaultWhatsappKnowledge);
+  const [whatsappAgentKnowledge, setWhatsappAgentKnowledge] = useState<WhatsAppAgentKnowledgeConfig>(defaultAgentKnowledge);
+  const [whatsappAutomations, setWhatsappAutomations] = useState<WhatsAppAutomationConfig[]>(defaultWhatsappAutomations);
+  const [whatsappLeads, setWhatsappLeads] = useState<PromokitLead[]>([]);
+  const [selectedAgentKnowledge, setSelectedAgentKnowledge] = useState(defaultWhatsappAgents[1].name);
+  const [isRunningAutomations, setIsRunningAutomations] = useState(false);
+  const [automationResult, setAutomationResult] = useState<any | null>(null);
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
@@ -441,10 +504,27 @@ export default function App() {
       if (data.knowledge) {
         setWhatsappKnowledge({ ...defaultWhatsappKnowledge, ...data.knowledge });
       }
+      if (data.agentKnowledge) {
+        setWhatsappAgentKnowledge({
+          ...defaultAgentKnowledge,
+          ...data.agentKnowledge,
+        });
+      }
+      if (Array.isArray(data.automations)) {
+        setWhatsappAutomations(defaultWhatsappAutomations.map(defaultAutomation => ({
+          ...defaultAutomation,
+          ...(data.automations.find((automation: WhatsAppAutomationConfig) => automation.id === defaultAutomation.id) || {}),
+        })));
+      }
       if (data.updatedAt) {
         setWhatsappAiSavedAt(data.updatedAt);
       }
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'whatsapp_ai_config'));
+
+    const unsubPromokitLeads = onSnapshot(query(collection(db, 'promokit_customers'), orderBy('updatedAt', 'desc')), (snapshot) => {
+      const leads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PromokitLead));
+      setWhatsappLeads(leads);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'promokit_customers'));
 
     return () => {
       unsubProducts();
@@ -455,6 +535,7 @@ export default function App() {
       unsubBills();
       unsubSales();
       unsubWhatsappAiConfig();
+      unsubPromokitLeads();
     };
   }, [user]);
 
@@ -498,7 +579,7 @@ export default function App() {
     }
   };
 
-  const handleSyncPromokitOrders = async () => {
+  const handleSyncPromokitOrders = async (take = 10) => {
     setIsSyncingPromokit(true);
     setError(null);
 
@@ -508,7 +589,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           lastOrderCode: promokitLastOrderCode.trim() || undefined,
-          take: 10,
+          take,
           status: 'novo',
         }),
       });
@@ -548,6 +629,66 @@ export default function App() {
     }));
   };
 
+  const buildStockMenuKnowledge = () => {
+    const marmitas = stock
+      .map(item => `- ${item.name}: R$ ${(item.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}; estoque ${item.currentStock} un`)
+      .join('\n');
+    const kitLines = kits
+      .map(kit => {
+        const items = kit.items
+          .map(item => {
+            const product = products.find(product => product.id === item.productId);
+            return `${item.quantity}x ${product?.name || 'produto'}`;
+          })
+          .join(', ');
+        return `- ${kit.name}: R$ ${(kit.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}; composto por ${items || 'itens cadastrados'}`;
+      })
+      .join('\n');
+
+    return [`Marmitas em estoque:`, marmitas || '- Nenhuma marmita cadastrada.', '', 'Kits cadastrados:', kitLines || '- Nenhum kit cadastrado.'].join('\n');
+  };
+
+  const handleWhatsappAgentKnowledgeChange = (agentName: string, field: keyof WhatsAppKnowledgeConfig, value: string) => {
+    setWhatsappAgentKnowledge(currentKnowledge => ({
+      ...currentKnowledge,
+      [agentName]: {
+        ...(currentKnowledge[agentName] || defaultWhatsappKnowledge),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleWhatsappAutomationChange = (automationId: string, field: keyof WhatsAppAutomationConfig, value: string | boolean | number) => {
+    setWhatsappAutomations(currentAutomations =>
+      currentAutomations.map(automation =>
+        automation.id === automationId ? { ...automation, [field]: value } : automation
+      )
+    );
+  };
+
+  const handleRunWhatsappAutomations = async () => {
+    setIsRunningAutomations(true);
+    setAutomationResult(null);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/whatsapp/run-automations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: true, automations: whatsappAutomations }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao rodar automações.');
+      }
+      setAutomationResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao rodar automações.');
+    } finally {
+      setIsRunningAutomations(false);
+    }
+  };
+
   const handleSaveWhatsappAiConfig = async () => {
     setIsSavingWhatsappAi(true);
     setError(null);
@@ -559,7 +700,12 @@ export default function App() {
         defaultAgent: 'Lia',
         tone: 'humano, curto, simpático e consultivo',
         agents: whatsappAgentConfigs,
-        knowledge: whatsappKnowledge,
+        knowledge: {
+          ...whatsappKnowledge,
+          menu: buildStockMenuKnowledge(),
+        },
+        agentKnowledge: whatsappAgentKnowledge,
+        automations: whatsappAutomations,
         updatedAt,
       }, { merge: true });
       setWhatsappAiSavedAt(updatedAt);
@@ -953,10 +1099,12 @@ export default function App() {
         title:
           whatsappEnvironment === 'dashboard' ? 'Dashboard do WhatsApp' :
           whatsappEnvironment === 'atendimento' ? 'Atendimento WhatsApp' :
+          whatsappEnvironment === 'leads' ? 'Leads Promokit' :
           'Configurações do WhatsApp IA',
         description:
           whatsappEnvironment === 'dashboard' ? 'Indicadores e status do atendimento automatizado.' :
           whatsappEnvironment === 'atendimento' ? 'Fila de conversas, preview completo e opção de assumir atendimento.' :
+          whatsappEnvironment === 'leads' ? 'Clientes sincronizados da Promokit com telefone, endereço e histórico.' :
           'Agentes, base comercial, automações e integrações do WhatsApp IA.',
       }
     : tabMeta[activeTab];
@@ -1535,7 +1683,7 @@ export default function App() {
                         </div>
                         <button
                           disabled={isSyncingPromokit}
-                          onClick={handleSyncPromokitOrders}
+                          onClick={() => handleSyncPromokitOrders()}
                           className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 transition-all disabled:opacity-50"
                         >
                           {isSyncingPromokit ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
@@ -2764,6 +2912,66 @@ export default function App() {
                 </div>
               )}
 
+              {whatsappEnvironment === 'leads' && (
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Leads Promokit</p>
+                      <h3 className="text-xl font-black text-gray-900">Clientes sincronizados</h3>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <p className="text-sm text-gray-500">{whatsappLeads.length} cliente(s) encontrados</p>
+                      <button
+                        onClick={() => handleSyncPromokitOrders(50)}
+                        disabled={isSyncingPromokit}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60"
+                      >
+                        {isSyncingPromokit ? <Loader2 className="animate-spin" size={17} /> : <RefreshCcw size={17} />}
+                        Sincronizar leads
+                      </button>
+                    </div>
+                  </div>
+                  {whatsappLeads.length === 0 ? (
+                    <div className="p-12 text-center">
+                      <UserPlus className="mx-auto text-gray-300 mb-4" size={42} />
+                      <p className="text-gray-500 font-bold">Nenhum lead sincronizado ainda.</p>
+                      <p className="text-sm text-gray-400 mt-1">Rode a sincronização da Promokit para popular esta lista.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {whatsappLeads.map(lead => (
+                        <div key={lead.id} className="p-5 grid grid-cols-1 xl:grid-cols-[1.2fr_1fr_1fr_140px] gap-4 xl:items-center">
+                          <div>
+                            <h4 className="font-black text-gray-900">{lead.name || 'Cliente sem nome'}</h4>
+                            <p className="text-sm text-gray-500 mt-1">{lead.phone || 'Telefone não informado'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-gray-400">Endereço</p>
+                            <p className="text-sm text-gray-600">
+                              {lead.address?.logradouro ? `${lead.address.logradouro}, ${lead.address.numero || 's/n'} - ${lead.address.bairro || ''}` : 'Endereço não informado'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-gray-400">Último pedido</p>
+                            <p className="text-sm font-bold text-gray-900">#{lead.lastOrderCode || '-'}</p>
+                            <p className="text-xs text-gray-500">
+                              {lead.lastOrderAt ? new Date(lead.lastOrderAt).toLocaleDateString('pt-BR') : 'Sem data'}
+                            </p>
+                          </div>
+                          <div className="text-left xl:text-right">
+                            <p className="text-[10px] font-black uppercase text-gray-400">Total</p>
+                            <p className="text-lg font-black text-emerald-600">
+                              R$ {(lead.lastOrderTotal || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-xs text-gray-500">{lead.orderCount || 0} compra(s)</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {whatsappEnvironment === 'configuracoes' && (
                 <div className="space-y-4">
                   <div className="config-tabs bg-white p-2 rounded-3xl border border-gray-100 shadow-sm flex flex-wrap gap-2">
@@ -2854,35 +3062,59 @@ export default function App() {
               )}
 
               {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'base' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.1fr] gap-4">
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <Store className="text-emerald-600" size={20} />
-                      Cardápio conectado
+                      Cardápio do estoque
                     </h3>
-                    <div className="space-y-3">
-                      {stock.slice(0, 5).map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                    <div className="grid grid-cols-1 gap-3 max-h-[520px] overflow-auto pr-1">
+                      {stock.map(item => (
+                        <div key={item.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-2xl">
                           <div>
                             <p className="font-bold text-gray-900 capitalize">{item.name}</p>
-                            <p className="text-xs text-gray-400">Estoque {item.currentStock} un</p>
+                            <p className="text-xs text-gray-400">Marmita · Estoque {item.currentStock} un</p>
                           </div>
                           <span className="text-sm font-black text-emerald-600">
                             R$ {item.price?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                       ))}
+                      {kits.map(kit => (
+                        <div key={kit.id} className="flex items-center justify-between gap-4 p-4 bg-emerald-50 rounded-2xl">
+                          <div>
+                            <p className="font-bold text-gray-900 capitalize">{kit.name}</p>
+                            <p className="text-xs text-gray-500">Kit · {kit.items.length} item(ns) na composição</p>
+                          </div>
+                          <span className="text-sm font-black text-emerald-600">
+                            R$ {(kit.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                     <p className="text-xs text-gray-400 mt-4">
-                      A IA também usa os produtos e preços cadastrados no estoque. Use os campos ao lado para complementar regras e ofertas.
+                      Esta base é gerada automaticamente a partir de marmitas e kits cadastrados.
                     </p>
                   </div>
 
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <Tag className="text-emerald-600" size={20} />
-                      Base de conhecimento
+                      Base complementar por agente
                     </h3>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {whatsappAgentConfigs.map(agent => (
+                        <button
+                          key={agent.name}
+                          onClick={() => setSelectedAgentKnowledge(agent.name)}
+                          className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${
+                            selectedAgentKnowledge === agent.name ? 'bg-emerald-600 text-white' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                          }`}
+                        >
+                          {agent.name}
+                        </button>
+                      ))}
+                    </div>
                     <div className="space-y-4">
                       {whatsappKnowledgeSections.map(section => (
                         <div key={section.key}>
@@ -2891,8 +3123,8 @@ export default function App() {
                             <p className="text-xs text-gray-500 mb-2">{section.description}</p>
                           </div>
                           <textarea
-                            value={whatsappKnowledge[section.key]}
-                            onChange={(event) => handleWhatsappKnowledgeChange(section.key, event.target.value)}
+                            value={(whatsappAgentKnowledge[selectedAgentKnowledge] || defaultWhatsappKnowledge)[section.key]}
+                            onChange={(event) => handleWhatsappAgentKnowledgeChange(selectedAgentKnowledge, section.key, event.target.value)}
                             placeholder={section.placeholder}
                             rows={4}
                             className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
@@ -2905,19 +3137,80 @@ export default function App() {
               )}
 
               {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'automacoes' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {[
-                    ['Carrinho sem resposta', 'Enviar lembrete 2h depois com prova social e opção de finalizar.'],
-                    ['Cliente parado 15 dias', 'Oferecer kit semanal com promoção leve e preferência anterior.'],
-                    ['Pós-entrega', 'Perguntar satisfação, registrar nota e pedir indicação quando for positivo.'],
-                    ['Estoque baixo', 'Evitar vender item indisponível e sugerir alternativa equivalente.'],
-                  ].map(([title, text]) => (
-                    <div key={title} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                      <Zap className="text-amber-500 mb-4" size={24} />
-                      <h3 className="font-bold text-gray-900">{title}</h3>
-                      <p className="text-sm text-gray-500 mt-2">{text}</p>
+                <div className="space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xl font-black text-gray-900">Automações configuráveis</h3>
+                      <p className="text-sm text-gray-500">Rode primeiro em simulação; o envio real pode ser liberado depois.</p>
                     </div>
-                  ))}
+                    <button
+                      onClick={handleRunWhatsappAutomations}
+                      disabled={isRunningAutomations}
+                      className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60"
+                    >
+                      {isRunningAutomations ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+                      Simular automações
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {whatsappAutomations.map(automation => (
+                      <div key={automation.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <Zap className="text-amber-500 mb-3" size={24} />
+                            <h3 className="font-black text-gray-900">{automation.title}</h3>
+                            <p className="text-sm text-gray-500 mt-1">{automation.description}</p>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-black text-gray-500 uppercase">
+                            <input
+                              type="checkbox"
+                              checked={automation.enabled}
+                              onChange={(event) => handleWhatsappAutomationChange(automation.id, 'enabled', event.target.checked)}
+                              className="w-4 h-4 accent-emerald-600"
+                            />
+                            {automation.enabled ? 'Ativa' : 'Pausada'}
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Agente</p>
+                            <select
+                              value={automation.agent}
+                              onChange={(event) => handleWhatsappAutomationChange(automation.id, 'agent', event.target.value)}
+                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none"
+                            >
+                              {whatsappAgentConfigs.map(agent => <option key={agent.name} value={agent.name}>{agent.name}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Dias</p>
+                            <input
+                              type="number"
+                              value={automation.triggerDays || 0}
+                              onChange={(event) => handleWhatsappAutomationChange(automation.id, 'triggerDays', Number(event.target.value))}
+                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none"
+                            />
+                          </div>
+                        </div>
+                        <textarea
+                          value={automation.message}
+                          onChange={(event) => handleWhatsappAutomationChange(automation.id, 'message', event.target.value)}
+                          rows={3}
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {automationResult && (
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-5">
+                      <p className="font-black text-emerald-800">Simulação concluída</p>
+                      <p className="text-sm text-emerald-700 mt-1">
+                        {automationResult.candidates?.length || 0} cliente(s) elegíveis encontrados.
+                        {' '}
+                        {automationResult.operationalActions?.length || 0} regra(s) operacional(is) ativa(s).
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

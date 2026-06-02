@@ -28,6 +28,18 @@ export type WhatsAppAiConfig = {
   tone: string;
   agents: WhatsAppAgentConfig[];
   knowledge: WhatsAppKnowledgeConfig;
+  agentKnowledge: Partial<Record<AgentName, WhatsAppKnowledgeConfig>>;
+  automations: WhatsAppAutomationConfig[];
+};
+
+export type WhatsAppAutomationConfig = {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  triggerDays?: number;
+  agent: AgentName;
+  message: string;
 };
 
 const defaultAgents: WhatsAppAgentConfig[] = [
@@ -78,6 +90,63 @@ const defaultKnowledge: WhatsAppKnowledgeConfig = {
   recovery: "",
 };
 
+const defaultAgentKnowledge: Partial<Record<AgentName, WhatsAppKnowledgeConfig>> = {
+  Lia: {
+    ...defaultKnowledge,
+    policies: "Base de triagem: identificar intencao, coletar bairro, nome e necessidade. Encaminhar vendas para Nina, suporte para Caio e recuperacao para Maya.",
+  },
+  Nina: {
+    ...defaultKnowledge,
+    prices: "Usar o cardapio do estoque como fonte principal. Confirmar disponibilidade antes de fechar pedido.",
+  },
+  Caio: {
+    ...defaultKnowledge,
+    policies: "Pedir nome, telefone e numero do pedido em casos de atraso, troca, item incorreto, cancelamento ou reclamacao.",
+  },
+  Maya: {
+    ...defaultKnowledge,
+    recovery: "Abordagem gentil para clientes parados, sem insistencia apos recusa.",
+  },
+};
+
+const defaultAutomations: WhatsAppAutomationConfig[] = [
+  {
+    id: "inactive_15_days",
+    title: "Cliente parado 15 dias",
+    description: "Identifica clientes sem compra recente e prepara recuperacao.",
+    enabled: true,
+    triggerDays: 15,
+    agent: "Maya",
+    message: "Oi! Vi que faz um tempinho que voce nao pede com a gente. Quer que eu te mande uma sugestao de kit para esta semana?",
+  },
+  {
+    id: "post_delivery",
+    title: "Pos-entrega",
+    description: "Acompanha satisfacao apos compra recente.",
+    enabled: false,
+    triggerDays: 1,
+    agent: "Caio",
+    message: "Oi! Passando para saber se deu tudo certo com seu pedido do Atelie Fit.",
+  },
+  {
+    id: "promo_return",
+    title: "Cupom de retorno",
+    description: "Segmenta clientes elegiveis para oferta de retorno.",
+    enabled: false,
+    triggerDays: 30,
+    agent: "Maya",
+    message: "Tenho uma condicao especial para voce voltar essa semana. Quer ver as opcoes?",
+  },
+  {
+    id: "stock_low",
+    title: "Estoque baixo",
+    description: "Orienta agentes a sugerirem alternativas disponiveis.",
+    enabled: true,
+    agent: "Nina",
+    message: "Quando um item estiver baixo, sugerir a alternativa mais proxima disponivel no estoque.",
+  },
+];
+
 export const defaultWhatsappAiConfig: WhatsAppAiConfig = {
   active: true,
   businessName: "Ateliê Fit",
@@ -85,6 +154,8 @@ export const defaultWhatsappAiConfig: WhatsAppAiConfig = {
   tone: "humano, curto, simpático e consultivo",
   agents: defaultAgents,
   knowledge: defaultKnowledge,
+  agentKnowledge: defaultAgentKnowledge,
+  automations: defaultAutomations,
 };
 
 export async function getWhatsappAiConfig(): Promise<WhatsAppAiConfig> {
@@ -108,5 +179,15 @@ export async function getWhatsappAiConfig(): Promise<WhatsAppAiConfig> {
       ...defaultKnowledge,
       ...(data.knowledge || {}),
     },
+    agentKnowledge: {
+      ...defaultAgentKnowledge,
+      ...(data.agentKnowledge || {}),
+    },
+    automations: defaultAutomations.map((defaultAutomation) => ({
+      ...defaultAutomation,
+      ...(Array.isArray(data.automations)
+        ? data.automations.find((automation: WhatsAppAutomationConfig) => automation.id === defaultAutomation.id) || {}
+        : {}),
+    })),
   };
 }

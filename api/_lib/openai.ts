@@ -35,10 +35,24 @@ function buildSystemInstructions(config?: WhatsAppAiConfig) {
   const enabledAgents = config.agents.filter((agent) => agent.enabled);
   const agentInstructions = enabledAgents
     .map(
-      (agent) => `- ${agent.name} (${agent.role})
+      (agent) => {
+        const knowledge = config.agentKnowledge?.[agent.name];
+        const knowledgeLines = knowledge
+          ? `
+  Base especifica:
+  Cardapio: ${knowledge.menu || "Usar base global."}
+  Precos e combos: ${knowledge.prices || "Usar base global."}
+  Promocoes: ${knowledge.promotions || "Usar base global."}
+  Entrega: ${knowledge.delivery || "Usar base global."}
+  Politicas: ${knowledge.policies || "Usar base global."}
+  Recuperacao: ${knowledge.recovery || "Usar base global."}`
+          : "";
+
+        return `- ${agent.name} (${agent.role})
   Tom: ${agent.tone}
   Objetivo: ${agent.goal}
-  Prompt: ${agent.prompt}`
+  Prompt: ${agent.prompt}${knowledgeLines}`;
+      }
     )
     .join("\n");
 
