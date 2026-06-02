@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/promokit/cron-sync",
+      "path": "/api/promokit/sync-new-orders",
       "schedule": "0 8 * * *"
     }
   ]

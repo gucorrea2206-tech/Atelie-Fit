@@ -15,6 +15,16 @@ function normalizePhone(order: any) {
   );
 }
 
+function extractOrders(response: any) {
+  return response?.data?.pedidos || response?.pedidos || [];
+}
+
+function isAuthorizedCron(req: VercelRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  return req.headers.authorization === `Bearer ${secret}`;
+}
+
 async function saveOrder(order: any) {
   const db = getAdminDb();
   const code = String(order.codigo || order.code || order.id || "");
@@ -75,6 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  if (req.method === "GET" && !isAuthorizedCron(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
   try {
     const db = getAdminDb();
     const input = req.method === "POST" ? req.body || {} : req.query;
@@ -85,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const lastOrderCode = String(input.lastOrderCode || state.data()?.lastOrderCode || "1");
 
     const response = await listPromokitLatestOrders({ lastOrderCode, take, status });
-    const orders = response?.data?.pedidos || response?.pedidos || [];
+    const orders = extractOrders(response);
     const savedCodes: string[] = [];
     const processedSales = [];
 
@@ -111,6 +125,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { merge: true }
     );
 
+    let leadBackfill = null;
+    const shouldBackfillLeads = req.method === "GET" || input.backfillLeads === true || input.backfillLeads === "true";
+
+    if (shouldBackfillLeads) {
+      const leadStateRef = db.collection("promokit_sync_state").doc("leads_todos");
+      const leadState = await leadStateRef.get();
+      const lastLeadOrderCode = String(input.lastLeadOrderCode || leadState.data()?.lastOrderCode || "1");
+      const leadsTake = Number(input.leadsTake || 50);
+      const leadResponse = await listPromokitLatestOrders({ lastOrderCode: lastLeadOrderCode, take: leadsTake, status: "todos" });
+      const leadOrders = extractOrders(leadResponse);
+      const leadSavedCodes: string[] = [];
+
+      for (const orderSummary of leadOrders) {
+        const code = String(orderSummary.codigo || "");
+        const fullOrder = code ? await getPromokitOrder(code).catch(() => ({ data: orderSummary })) : { data: orderSummary };
+        const order = fullOrder?.data || fullOrder || orderSummary;
+        const savedCode = await saveOrder(order);
+        if (savedCode) leadSavedCodes.push(savedCode);
+      }
+
+      const nextLeadOrderCode = leadSavedCodes[leadSavedCodes.length - 1] || lastLeadOrderCode;
+      await leadStateRef.set(
+        {
+          status: "todos",
+          lastOrderCode: nextLeadOrderCode,
+          lastRunAt: FieldValue.serverTimestamp(),
+          lastCount: leadSavedCodes.length,
+        },
+        { merge: true }
+      );
+
+      leadBackfill = {
+        previousLastOrderCode: lastLeadOrderCode,
+        nextLastOrderCode: nextLeadOrderCode,
+        count: leadSavedCodes.length,
+        savedCodes: leadSavedCodes,
+      };
+    }
+
     return res.status(200).json({
       ok: true,
       status,
@@ -119,6 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       count: savedCodes.length,
       savedCodes,
       processedSales,
+      leadBackfill,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Promokit automatic sync failed";
