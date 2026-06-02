@@ -237,6 +237,59 @@ const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: st
   { key: 'recovery', title: 'Recuperação', description: 'Ofertas e abordagem para clientes parados.', placeholder: 'Ex: Clientes sem compra há 15 dias recebem sugestão de kit semanal...' },
 ];
 
+type AppTab = 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'whatsapp';
+
+const tabMeta: Record<AppTab, { label: string; title: string; description: string }> = {
+  dashboard: {
+    label: 'Dashboard',
+    title: 'Visão geral',
+    description: 'Indicadores principais de estoque, vendas e operação do Ateliê Fit.',
+  },
+  estoque: {
+    label: 'Estoque',
+    title: 'Estoque de marmitas',
+    description: 'Acompanhe disponibilidade, valor parado e kits montáveis.',
+  },
+  producao: {
+    label: 'Produção',
+    title: 'Registrar produção',
+    description: 'Use a IA operacional para transformar texto em entradas de estoque.',
+  },
+  vendas: {
+    label: 'Vendas',
+    title: 'Vendas e pedidos',
+    description: 'Sincronize pedidos da Promokit e acompanhe registros com baixa de estoque.',
+  },
+  historico: {
+    label: 'Histórico',
+    title: 'Histórico de movimentações',
+    description: 'Veja entradas, saídas e ajustes que formaram o estoque atual.',
+  },
+  config: {
+    label: 'Cardápio',
+    title: 'Cardápio e kits',
+    description: 'Gerencie produtos, preços e composições usadas pela operação.',
+  },
+  compras: {
+    label: 'Lista de Compras',
+    title: 'Compras e fornecedores',
+    description: 'Organize insumos, fornecedores e listas de reposição.',
+  },
+  contas: {
+    label: 'Contas a Pagar',
+    title: 'Financeiro operacional',
+    description: 'Controle contas, vencimentos e pagamentos recorrentes.',
+  },
+  whatsapp: {
+    label: 'WhatsApp IA',
+    title: 'WhatsApp IA',
+    description: 'Configure agentes, base comercial e integrações de atendimento.',
+  },
+};
+
+const primaryTabs: AppTab[] = ['dashboard', 'estoque', 'producao', 'vendas'];
+const managementTabs: AppTab[] = ['config', 'compras', 'contas', 'whatsapp'];
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -247,7 +300,7 @@ export default function App() {
   const [kits, setKits] = useState<Kit[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'whatsapp'>('dashboard');
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('atendimento');
   const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState(1);
   const [whatsappAgentConfigs, setWhatsappAgentConfigs] = useState<WhatsAppAgentConfig[]>(defaultWhatsappAgents);
@@ -871,56 +924,79 @@ export default function App() {
 
   const selectedConversation = whatsappConversations.find(c => c.id === selectedWhatsappConversation) || whatsappConversations[0];
   const getSaleOrderNumber = (sale: Sale) => sale.orderNumber || sale.promokitOrderCode || sale.id.slice(0, 6).toUpperCase();
+  const currentTabMeta = tabMeta[activeTab];
+  const currentMonthRevenue = sales
+    .filter(s => {
+      const date = s.saleDate?.toDate();
+      return date && date >= startOfMonth(new Date()) && date <= endOfMonth(new Date());
+    })
+    .reduce((acc, s) => acc + s.value, 0);
+  const renderNavButton = (tab: AppTab) => (
+    <button
+      key={tab}
+      onClick={() => {
+        setActiveTab(tab);
+        setPreview(null);
+        setInputText('');
+      }}
+      className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
+        activeTab === tab
+          ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
+          : 'text-gray-500 hover:bg-gray-50'
+      }`}
+    >
+      {tab === 'dashboard' && <LayoutDashboard size={18} />}
+      {tab === 'estoque' && <Package size={18} />}
+      {tab === 'producao' && <Plus size={18} />}
+      {tab === 'vendas' && <Minus size={18} />}
+      {tab === 'config' && <Settings size={18} />}
+      {tab === 'compras' && <ShoppingCart size={18} />}
+      {tab === 'contas' && <CreditCard size={18} />}
+      {tab === 'whatsapp' && <MessageCircle size={18} />}
+      {tabMeta[tab].label}
+    </button>
+  );
 
   return (
     <div className="workspace-shell min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Sidebar Navigation */}
-      <aside className="bg-white w-full md:w-64 md:min-h-screen border-b md:border-b-0 md:border-r border-gray-100 flex flex-col sticky top-0 z-20">
-        <div className="px-6 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-emerald-100 rounded-lg">
+      <aside className="workspace-sidebar bg-white w-full md:w-72 md:min-h-screen border-b md:border-b-0 md:border-r border-gray-100 flex flex-col sticky top-0 z-20">
+        <div className="px-5 py-5">
+          <div className="brand-panel flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-100 rounded-lg shrink-0">
               <Package className="text-emerald-600" size={24} />
             </div>
-            <h1 className="font-bold text-gray-900 text-base leading-tight">Workspace Ateliê Fit</h1>
+            <div>
+              <h1 className="font-bold text-gray-900 text-base leading-tight">Workspace Ateliê Fit</h1>
+              <p className="text-[11px] text-gray-500 mt-1">Operação inteligente</p>
+            </div>
+            <button onClick={logout} className="md:hidden ml-auto p-2 text-gray-400 hover:text-red-500 transition-colors">
+              <LogOut size={20} />
+            </button>
           </div>
-          <button onClick={logout} className="md:hidden p-2 text-gray-400 hover:text-red-500 transition-colors">
-            <LogOut size={20} />
-          </button>
         </div>
 
-        <nav className="flex-1 px-4 py-2 space-y-2 overflow-x-auto md:overflow-x-visible flex md:flex-col no-scrollbar">
-          {(['dashboard', 'estoque', 'producao', 'vendas', 'config', 'compras', 'contas', 'whatsapp'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setActiveTab(tab);
-                setPreview(null);
-                setInputText('');
-              }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all capitalize whitespace-nowrap md:whitespace-normal w-full ${
-                activeTab === tab 
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' 
-                  : 'text-gray-500 hover:bg-gray-50'
-              }`}
-            >
-              {tab === 'dashboard' && <LayoutDashboard size={18} />}
-              {tab === 'estoque' && <Package size={18} />}
-              {tab === 'producao' && <Plus size={18} />}
-              {tab === 'vendas' && <Minus size={18} />}
-              {tab === 'config' && <Settings size={18} />}
-              {tab === 'compras' && <ShoppingCart size={18} />}
-              {tab === 'contas' && <CreditCard size={18} />}
-              {tab === 'whatsapp' && <MessageCircle size={18} />}
-              {tab === 'config' ? 'Cardápio' : 
-               tab === 'compras' ? 'Lista de Compras' : 
-               tab === 'contas' ? 'Contas a Pagar' : 
-               tab === 'whatsapp' ? 'WhatsApp IA' :
-               tab === 'producao' ? 'Produção' :
-               tab === 'vendas' ? 'Vendas' :
-               tab}
-            </button>
-          ))}
+        <nav className="flex-1 px-4 pb-4 space-y-5 overflow-x-auto md:overflow-x-visible flex md:flex-col no-scrollbar">
+          <div className="nav-group">
+            <p className="nav-section-title">Principal</p>
+            <div className="space-y-2">{primaryTabs.map(renderNavButton)}</div>
+          </div>
+
+          <div className="nav-group">
+            <p className="nav-section-title">Gestão</p>
+            <div className="space-y-2">{managementTabs.map(renderNavButton)}</div>
+          </div>
         </nav>
+
+        <div className="hidden md:block mx-4 mb-4">
+          <div className="sidebar-summary">
+            <p className="text-[10px] font-black uppercase text-gray-400">Vendas do mês</p>
+            <p className="text-2xl font-black mt-1">
+              R$ {currentMonthRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">{sales.length} registro(s) no histórico</p>
+          </div>
+        </div>
 
         <div className="hidden md:flex p-4 border-t border-gray-50 items-center justify-around">
           <button 
@@ -949,7 +1025,25 @@ export default function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
+      <main className="workspace-main flex-1 p-5 md:p-8 lg:p-10 max-w-[1500px] mx-auto w-full">
+        <header className="workspace-header mb-8">
+          <div>
+            <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Workspace Ateliê Fit</p>
+            <h1 className="text-3xl md:text-4xl font-black text-gray-900 mt-1">{currentTabMeta.title}</h1>
+            <p className="text-sm md:text-base text-gray-500 mt-2 max-w-2xl">{currentTabMeta.description}</p>
+          </div>
+          <div className="header-actions">
+            <div className="header-pill">
+              <Calendar size={16} />
+              <span>{format(new Date(), "dd 'de' MMMM", { locale: ptBR })}</span>
+            </div>
+            <div className="header-pill is-strong">
+              <Activity size={16} />
+              <span>{stock.reduce((acc, item) => acc + item.currentStock, 0)} un em estoque</span>
+            </div>
+          </div>
+        </header>
+
         <AnimatePresence mode="wait">
           {activeTab === 'dashboard' && (
             <motion.div
