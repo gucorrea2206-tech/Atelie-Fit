@@ -135,6 +135,37 @@ select {
   color: var(--atelier-primary);
 }
 
+.whatsapp-full-workspace {
+  min-height: calc(100vh - 40px);
+}
+
+.whatsapp-chat-shell {
+  min-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+.whatsapp-chat-grid {
+  min-height: 0;
+  flex: 1;
+}
+
+.chat-list,
+.chat-panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.chat-panel > .flex-1 {
+  min-height: 0;
+  overflow: auto;
+}
+
+.whatsapp-subnav {
+  padding-left: 10px;
+  border-left: 1px solid rgba(205, 239, 189, 0.9);
+}
+
 .workspace-shell .bg-gray-50 {
   background-color: var(--atelier-page);
 }

@@ -45,6 +45,7 @@ import {
   Settings,
   Trash2,
   ChevronRight,
+  ChevronDown,
   LayoutDashboard,
   Calendar,
   ShoppingCart,
@@ -117,7 +118,7 @@ function ErrorDisplay({ error, onRetry }: { error: string, onRetry: () => void }
   );
 }
 
-type WhatsAppEnvironment = 'atendimento' | 'agentes' | 'base' | 'automacoes' | 'integracoes';
+type WhatsAppEnvironment = 'dashboard' | 'atendimento' | 'configuracoes';
 
 const whatsappConversations = [
   {
@@ -289,6 +290,11 @@ const tabMeta: Record<AppTab, { label: string; title: string; description: strin
 
 const primaryTabs: AppTab[] = ['dashboard', 'estoque', 'producao', 'vendas'];
 const managementTabs: AppTab[] = ['config', 'compras', 'contas', 'whatsapp'];
+const whatsappSubTabs: { id: WhatsAppEnvironment; label: string; icon: React.ElementType }[] = [
+  { id: 'dashboard', label: 'Dashboard do WhatsApp', icon: LayoutDashboard },
+  { id: 'atendimento', label: 'Atendimento', icon: MessageCircle },
+  { id: 'configuracoes', label: 'Configurações', icon: Settings },
+];
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -301,7 +307,7 @@ export default function App() {
   const [stock, setStock] = useState<StockItem[]>([]);
   
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
-  const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('atendimento');
+  const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('dashboard');
   const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState(1);
   const [whatsappAgentConfigs, setWhatsappAgentConfigs] = useState<WhatsAppAgentConfig[]>(defaultWhatsappAgents);
   const [whatsappKnowledge, setWhatsappKnowledge] = useState<WhatsAppKnowledgeConfig>(defaultWhatsappKnowledge);
@@ -924,7 +930,19 @@ export default function App() {
 
   const selectedConversation = whatsappConversations.find(c => c.id === selectedWhatsappConversation) || whatsappConversations[0];
   const getSaleOrderNumber = (sale: Sale) => sale.orderNumber || sale.promokitOrderCode || sale.id.slice(0, 6).toUpperCase();
-  const currentTabMeta = tabMeta[activeTab];
+  const currentTabMeta = activeTab === 'whatsapp'
+    ? {
+        ...tabMeta.whatsapp,
+        title:
+          whatsappEnvironment === 'dashboard' ? 'Dashboard do WhatsApp' :
+          whatsappEnvironment === 'atendimento' ? 'Atendimento WhatsApp' :
+          'Configurações do WhatsApp IA',
+        description:
+          whatsappEnvironment === 'dashboard' ? 'Indicadores e status do atendimento automatizado.' :
+          whatsappEnvironment === 'atendimento' ? 'Fila de conversas, preview completo e opção de assumir atendimento.' :
+          'Agentes, base comercial, automações e integrações do WhatsApp IA.',
+      }
+    : tabMeta[activeTab];
   const currentMonthRevenue = sales
     .filter(s => {
       const date = s.saleDate?.toDate();
@@ -932,29 +950,72 @@ export default function App() {
     })
     .reduce((acc, s) => acc + s.value, 0);
   const renderNavButton = (tab: AppTab) => (
-    <button
-      key={tab}
-      onClick={() => {
-        setActiveTab(tab);
-        setPreview(null);
-        setInputText('');
-      }}
-      className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
-        activeTab === tab
-          ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
-          : 'text-gray-500 hover:bg-gray-50'
-      }`}
-    >
-      {tab === 'dashboard' && <LayoutDashboard size={18} />}
-      {tab === 'estoque' && <Package size={18} />}
-      {tab === 'producao' && <Plus size={18} />}
-      {tab === 'vendas' && <Minus size={18} />}
-      {tab === 'config' && <Settings size={18} />}
-      {tab === 'compras' && <ShoppingCart size={18} />}
-      {tab === 'contas' && <CreditCard size={18} />}
-      {tab === 'whatsapp' && <MessageCircle size={18} />}
-      {tabMeta[tab].label}
-    </button>
+    tab === 'whatsapp' ? (
+      <div key={tab} className="whatsapp-nav-group">
+        <button
+          onClick={() => {
+            setActiveTab('whatsapp');
+            setPreview(null);
+            setInputText('');
+          }}
+          className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
+            activeTab === 'whatsapp'
+              ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
+              : 'text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <MessageCircle size={18} />
+          <span className="flex-1 text-left">{tabMeta[tab].label}</span>
+          <ChevronDown size={15} className={`transition-transform ${activeTab === 'whatsapp' ? 'rotate-180' : ''}`} />
+        </button>
+        {activeTab === 'whatsapp' && (
+          <div className="whatsapp-subnav mt-2 space-y-1">
+            {whatsappSubTabs.map(subTab => (
+              <button
+                key={subTab.id}
+                onClick={() => {
+                  setActiveTab('whatsapp');
+                  setWhatsappEnvironment(subTab.id);
+                  setPreview(null);
+                  setInputText('');
+                }}
+                className={`w-full flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                  whatsappEnvironment === subTab.id
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <subTab.icon size={15} />
+                {subTab.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    ) : (
+      <button
+        key={tab}
+        onClick={() => {
+          setActiveTab(tab);
+          setPreview(null);
+          setInputText('');
+        }}
+        className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
+          activeTab === tab
+            ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
+            : 'text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        {tab === 'dashboard' && <LayoutDashboard size={18} />}
+        {tab === 'estoque' && <Package size={18} />}
+        {tab === 'producao' && <Plus size={18} />}
+        {tab === 'vendas' && <Minus size={18} />}
+        {tab === 'config' && <Settings size={18} />}
+        {tab === 'compras' && <ShoppingCart size={18} />}
+        {tab === 'contas' && <CreditCard size={18} />}
+        {tabMeta[tab].label}
+      </button>
+    )
   );
 
   return (
@@ -1025,7 +1086,8 @@ export default function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="workspace-main flex-1 p-5 md:p-8 lg:p-10 max-w-[1500px] mx-auto w-full">
+      <main className={`workspace-main flex-1 w-full ${activeTab === 'whatsapp' && whatsappEnvironment === 'atendimento' ? 'p-3 md:p-5 max-w-none' : 'p-5 md:p-8 lg:p-10 max-w-[1500px] mx-auto'}`}>
+        {!(activeTab === 'whatsapp' && whatsappEnvironment === 'atendimento') && (
         <header className="workspace-header mb-8">
           <div>
             <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Workspace Ateliê Fit</p>
@@ -1043,6 +1105,7 @@ export default function App() {
             </div>
           </div>
         </header>
+        )}
 
         <AnimatePresence mode="wait">
           {activeTab === 'dashboard' && (
@@ -2513,8 +2576,9 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="space-y-8"
+              className={whatsappEnvironment === 'atendimento' ? 'whatsapp-full-workspace' : 'space-y-8'}
             >
+              {whatsappEnvironment !== 'atendimento' && (
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -2538,12 +2602,14 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              {whatsappAiSavedAt && (
+              )}
+              {whatsappEnvironment !== 'atendimento' && whatsappAiSavedAt && (
                 <p className="text-xs text-gray-400 -mt-4">
                   Configuração salva em {format(new Date(whatsappAiSavedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                 </p>
               )}
 
+              {whatsappEnvironment === 'dashboard' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                   { label: 'Instância', value: 'AtelieFit-01', note: 'Conectada', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -2563,14 +2629,14 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              )}
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {whatsappEnvironment === 'dashboard' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {[
+                  { id: 'dashboard', label: 'Dashboard', note: 'Status geral e indicadores', icon: LayoutDashboard },
                   { id: 'atendimento', label: 'Atendimento', note: 'Conversas e assumir chat', icon: MessageCircle },
-                  { id: 'agentes', label: 'Agentes', note: 'Personalidade e rotas', icon: Bot },
-                  { id: 'base', label: 'Base comercial', note: 'Cardápio e promoções', icon: Store },
-                  { id: 'automacoes', label: 'Automações', note: 'Recuperação e pós-venda', icon: RefreshCcw },
-                  { id: 'integracoes', label: 'Integrações', note: 'Evolution e ChatGPT', icon: PlugZap },
+                  { id: 'configuracoes', label: 'Configurações', note: 'Agentes, base e integrações', icon: Settings },
                 ].map(environment => (
                   <button
                     key={environment.id}
@@ -2589,15 +2655,27 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              )}
 
               {whatsappEnvironment === 'atendimento' && (
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="p-6 border-b border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-900">Preview das Conversas</h3>
-                    <p className="text-sm text-gray-500">Fila de atendimento, intenção detectada e passagem para humano.</p>
+                <div className="whatsapp-chat-shell bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="chat-topbar p-4 md:p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Atendimento WhatsApp</p>
+                      <h3 className="text-xl md:text-2xl font-black text-gray-900">Conversas e assumir atendimento</h3>
+                      <p className="text-sm text-gray-500">Fila de atendimento, intenção detectada e passagem para humano.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setWhatsappEnvironment('dashboard')} className="px-4 py-2.5 bg-gray-50 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-100 transition-all">
+                        Dashboard
+                      </button>
+                      <button onClick={() => setWhatsappEnvironment('configuracoes')} className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all">
+                        Configurações
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr]">
-                    <div className="border-b lg:border-b-0 lg:border-r border-gray-100">
+                  <div className="whatsapp-chat-grid grid grid-cols-1 lg:grid-cols-[380px_1fr]">
+                    <div className="chat-list border-b lg:border-b-0 lg:border-r border-gray-100">
                       {whatsappConversations.map(conversation => (
                         <button
                           key={conversation.id}
@@ -2630,7 +2708,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    <div className="min-h-[480px] flex flex-col bg-gray-50">
+                    <div className="chat-panel flex flex-col bg-gray-50">
                       <div className="p-4 bg-white border-b border-gray-100 flex items-center justify-between">
                         <div>
                           <p className="font-bold text-gray-900">{selectedConversation.customer}</p>
@@ -2669,7 +2747,7 @@ export default function App() {
                 </div>
               )}
 
-              {whatsappEnvironment === 'agentes' && (
+              {whatsappEnvironment === 'configuracoes' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {whatsappAgentConfigs.map(agent => (
@@ -2742,7 +2820,7 @@ export default function App() {
                 </div>
               )}
 
-              {whatsappEnvironment === 'base' && (
+              {whatsappEnvironment === 'configuracoes' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -2793,7 +2871,7 @@ export default function App() {
                 </div>
               )}
 
-              {whatsappEnvironment === 'automacoes' && (
+              {whatsappEnvironment === 'configuracoes' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[
                     ['Carrinho sem resposta', 'Enviar lembrete 2h depois com prova social e opção de finalizar.'],
@@ -2810,7 +2888,7 @@ export default function App() {
                 </div>
               )}
 
-              {whatsappEnvironment === 'integracoes' && (
+              {whatsappEnvironment === 'configuracoes' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
