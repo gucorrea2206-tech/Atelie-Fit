@@ -293,6 +293,7 @@ export async function processPromokitOrder(order: any): Promise<ProcessOrderResu
     value: Number(order?.total ?? 0),
     totalQuantity,
     itemsDescription: lineItems.map((item) => `${item.quantity}x ${item.name}`).join(", "),
+    orderNumber: code,
     saleDate,
     createdAt: FieldValue.serverTimestamp(),
     source: "promokit",

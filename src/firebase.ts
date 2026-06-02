@@ -104,6 +104,7 @@ export interface Sale {
   value: number;
   totalQuantity: number;
   itemsDescription: string;
+  orderNumber?: string;
   source?: string;
   promokitOrderCode?: string;
   promokitStatus?: string;

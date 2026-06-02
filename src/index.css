@@ -1,1 +1,168 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
 @import "tailwindcss";
+
+:root {
+  --atelier-ink: #033b32;
+  --atelier-ink-soft: #31554d;
+  --atelier-primary: #06483d;
+  --atelier-primary-hover: #03392f;
+  --atelier-lime: #97ec62;
+  --atelier-lime-soft: #effce7;
+  --atelier-mint: #dff8d5;
+  --atelier-surface: #fbfdf9;
+  --atelier-page: #f3f6f1;
+  --atelier-border: #e2ebe0;
+  --atelier-muted: #6f8079;
+}
+
+html {
+  background: var(--atelier-page);
+}
+
+body {
+  margin: 0;
+  color: var(--atelier-ink);
+  background:
+    radial-gradient(circle at 26% 8%, rgba(151, 236, 98, 0.2), transparent 26%),
+    linear-gradient(135deg, #f8fbf5 0%, #f2f6ef 44%, #eef5ea 100%);
+  font-family: 'Manrope', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.workspace-shell {
+  color: var(--atelier-ink);
+}
+
+.workspace-shell .bg-gray-50 {
+  background-color: var(--atelier-page);
+}
+
+.workspace-shell .bg-white {
+  background-color: rgba(255, 255, 255, 0.92);
+}
+
+.workspace-shell .border-gray-100,
+.workspace-shell .border-gray-200,
+.workspace-shell .border-gray-50 {
+  border-color: var(--atelier-border);
+}
+
+.workspace-shell .shadow-sm {
+  box-shadow: 0 12px 34px rgba(6, 72, 61, 0.07);
+}
+
+.workspace-shell .shadow-lg {
+  box-shadow: 0 14px 32px rgba(6, 72, 61, 0.14);
+}
+
+.workspace-shell aside.bg-white {
+  background: rgba(245, 248, 242, 0.92);
+  backdrop-filter: blur(16px);
+}
+
+.workspace-shell main {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0)),
+    transparent;
+}
+
+.workspace-shell h1,
+.workspace-shell h2,
+.workspace-shell h3,
+.workspace-shell .font-bold,
+.workspace-shell .font-black {
+  color: var(--atelier-ink);
+  letter-spacing: 0;
+}
+
+.workspace-shell .text-gray-900 {
+  color: var(--atelier-ink);
+}
+
+.workspace-shell .text-gray-700,
+.workspace-shell .text-gray-600,
+.workspace-shell .text-gray-500,
+.workspace-shell .text-gray-400 {
+  color: var(--atelier-muted);
+}
+
+.workspace-shell .text-emerald-600,
+.workspace-shell .text-emerald-700,
+.workspace-shell .text-emerald-800,
+.workspace-shell .text-emerald-900 {
+  color: var(--atelier-primary);
+}
+
+.workspace-shell .bg-emerald-600 {
+  background-color: var(--atelier-primary);
+}
+
+.workspace-shell .hover\:bg-emerald-700:hover,
+.workspace-shell .hover\:bg-black:hover,
+.workspace-shell .hover\:bg-gray-900:hover {
+  background-color: var(--atelier-primary-hover);
+}
+
+.workspace-shell .bg-emerald-50,
+.workspace-shell .bg-emerald-100 {
+  background-color: var(--atelier-lime-soft);
+}
+
+.workspace-shell .bg-lime-50,
+.workspace-shell .bg-lime-100 {
+  background-color: var(--atelier-mint);
+}
+
+.workspace-shell .text-lime-700 {
+  color: var(--atelier-primary);
+}
+
+.workspace-shell .border-emerald-100,
+.workspace-shell .border-emerald-200,
+.workspace-shell .border-lime-100 {
+  border-color: #cdefbd;
+}
+
+.workspace-shell .ring-emerald-100 {
+  --tw-ring-color: rgba(151, 236, 98, 0.34);
+}
+
+.workspace-shell .rounded-3xl {
+  border-radius: 20px;
+}
+
+.workspace-shell .rounded-2xl {
+  border-radius: 14px;
+}
+
+.workspace-shell .rounded-xl {
+  border-radius: 10px;
+}
+
+.workspace-shell input,
+.workspace-shell textarea,
+.workspace-shell select {
+  color: var(--atelier-ink);
+}
+
+.workspace-shell input::placeholder,
+.workspace-shell textarea::placeholder {
+  color: #9aa7a1;
+}
+
+.workspace-shell .bg-gray-100 {
+  background-color: #edf3e9;
+}
+
+.workspace-shell table,
+.workspace-shell .recharts-wrapper {
+  color: var(--atelier-ink);
+}

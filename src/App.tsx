@@ -851,7 +851,7 @@ export default function App() {
           <div className="w-20 h-20 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Package className="text-emerald-600" size={40} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Ateliê Fit</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Workspace Ateliê Fit</h1>
           <p className="text-gray-500 mb-8">Gestão de Estoque Inteligente</p>
           <button 
             onClick={signInWithGoogle}
@@ -870,9 +870,10 @@ export default function App() {
   }
 
   const selectedConversation = whatsappConversations.find(c => c.id === selectedWhatsappConversation) || whatsappConversations[0];
+  const getSaleOrderNumber = (sale: Sale) => sale.orderNumber || sale.promokitOrderCode || sale.id.slice(0, 6).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+    <div className="workspace-shell min-h-screen bg-gray-50 flex flex-col md:flex-row">
       {/* Sidebar Navigation */}
       <aside className="bg-white w-full md:w-64 md:min-h-screen border-b md:border-b-0 md:border-r border-gray-100 flex flex-col sticky top-0 z-20">
         <div className="px-6 py-6 flex items-center justify-between">
@@ -880,7 +881,7 @@ export default function App() {
             <div className="p-2 bg-emerald-100 rounded-lg">
               <Package className="text-emerald-600" size={24} />
             </div>
-            <h1 className="font-bold text-gray-900 text-xl">Ateliê Fit</h1>
+            <h1 className="font-bold text-gray-900 text-base leading-tight">Workspace Ateliê Fit</h1>
           </div>
           <button onClick={logout} className="md:hidden p-2 text-gray-400 hover:text-red-500 transition-colors">
             <LogOut size={20} />
@@ -948,7 +949,7 @@ export default function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-6 md:p-10 max-w-5xl mx-auto w-full">
+      <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
         <AnimatePresence mode="wait">
           {activeTab === 'dashboard' && (
             <motion.div
@@ -1478,6 +1479,16 @@ export default function App() {
                               <p className="text-xs text-gray-400 flex items-center gap-1">
                                 <Calendar size={12} /> {sale.saleDate?.toDate().toLocaleDateString('pt-BR')}
                               </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-2">
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-100">
+                                  Pedido #{getSaleOrderNumber(sale)}
+                                </span>
+                                {sale.source === 'promokit' && (
+                                  <span className="text-[10px] font-black uppercase tracking-wider bg-lime-50 text-lime-700 px-2.5 py-1 rounded-lg border border-lime-100">
+                                    Promokit
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-600 mt-1 italic">"{sale.itemsDescription}"</p>
                             </div>
                           </div>
