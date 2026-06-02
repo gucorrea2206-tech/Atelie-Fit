@@ -608,6 +608,35 @@ export default function App() {
     }
   };
 
+  const handleSyncPromokitLeads = async () => {
+    setIsSyncingPromokit(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/promokit/sync-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lastOrderCode: '1',
+          take: 50,
+          status: 'todos',
+          processSales: false,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao sincronizar leads da Promokit.');
+      }
+
+      setPromokitSyncResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao sincronizar leads da Promokit.');
+    } finally {
+      setIsSyncingPromokit(false);
+    }
+  };
+
   const handleWhatsappAgentChange = (agentName: string, field: keyof WhatsAppAgentConfig, value: string | boolean) => {
     setWhatsappAgentConfigs(currentAgents =>
       currentAgents.map(agent =>
@@ -2922,7 +2951,7 @@ export default function App() {
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       <p className="text-sm text-gray-500">{whatsappLeads.length} cliente(s) encontrados</p>
                       <button
-                        onClick={() => handleSyncPromokitOrders(50)}
+                        onClick={handleSyncPromokitLeads}
                         disabled={isSyncingPromokit}
                         className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60"
                       >
