@@ -219,6 +219,16 @@ select {
   color: var(--atelier-ink);
 }
 
+.workspace-shell .text-white,
+.workspace-shell .text-white.font-bold,
+.workspace-shell .text-white.font-black,
+.workspace-shell button.text-white,
+.workspace-shell .bg-emerald-600.text-white,
+.workspace-shell .nav-item.is-active,
+.workspace-shell .config-tab-button.bg-emerald-600 {
+  color: #ffffff;
+}
+
 .workspace-shell .text-gray-700,
 .workspace-shell .text-gray-600,
 .workspace-shell .text-gray-500,

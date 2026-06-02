@@ -119,6 +119,7 @@ function ErrorDisplay({ error, onRetry }: { error: string, onRetry: () => void }
 }
 
 type WhatsAppEnvironment = 'dashboard' | 'atendimento' | 'configuracoes';
+type WhatsAppConfigTab = 'agentes' | 'base' | 'automacoes' | 'integracoes';
 
 const whatsappConversations = [
   {
@@ -295,6 +296,12 @@ const whatsappSubTabs: { id: WhatsAppEnvironment; label: string; icon: React.Ele
   { id: 'atendimento', label: 'Atendimento', icon: MessageCircle },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
 ];
+const whatsappConfigTabs: { id: WhatsAppConfigTab; label: string; icon: React.ElementType }[] = [
+  { id: 'agentes', label: 'Agentes', icon: Bot },
+  { id: 'base', label: 'Base de cardápio', icon: Store },
+  { id: 'automacoes', label: 'Automações', icon: RefreshCcw },
+  { id: 'integracoes', label: 'Integrações', icon: PlugZap },
+];
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -308,6 +315,8 @@ export default function App() {
   
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('dashboard');
+  const [whatsappConfigTab, setWhatsappConfigTab] = useState<WhatsAppConfigTab>('agentes');
+  const [editingWhatsappAgent, setEditingWhatsappAgent] = useState<string | null>(null);
   const [selectedWhatsappConversation, setSelectedWhatsappConversation] = useState(1);
   const [whatsappAgentConfigs, setWhatsappAgentConfigs] = useState<WhatsAppAgentConfig[]>(defaultWhatsappAgents);
   const [whatsappKnowledge, setWhatsappKnowledge] = useState<WhatsAppKnowledgeConfig>(defaultWhatsappKnowledge);
@@ -929,7 +938,15 @@ export default function App() {
   }
 
   const selectedConversation = whatsappConversations.find(c => c.id === selectedWhatsappConversation) || whatsappConversations[0];
+  const editingAgent = whatsappAgentConfigs.find(agent => agent.name === editingWhatsappAgent) || null;
   const getSaleOrderNumber = (sale: Sale) => sale.orderNumber || sale.promokitOrderCode || sale.id.slice(0, 6).toUpperCase();
+  const getAgentConversationStats = (agentName: string) => {
+    const active = whatsappConversations.filter(conversation => conversation.agent === agentName).length;
+    return {
+      active,
+      finished: agentName === 'Nina' ? 24 : agentName === 'Caio' ? 11 : agentName === 'Maya' ? 8 : 17,
+    };
+  };
   const currentTabMeta = activeTab === 'whatsapp'
     ? {
         ...tabMeta.whatsapp,
@@ -2749,56 +2766,71 @@ export default function App() {
 
               {whatsappEnvironment === 'configuracoes' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {whatsappAgentConfigs.map(agent => (
-                      <div key={agent.name} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                        <div className="flex items-start justify-between gap-3 mb-4">
-                          <div>
-                            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{agent.role}</p>
-                            <h3 className="text-xl font-black text-gray-900 mt-1">{agent.name}</h3>
-                          </div>
-                          <label className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase">
-                            <input
-                              type="checkbox"
-                              checked={agent.enabled}
-                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'enabled', event.target.checked)}
-                              className="w-4 h-4 accent-emerald-600"
-                            />
-                            {agent.enabled ? 'Ativo' : 'Revisão'}
-                          </label>
-                        </div>
-                        <div className="space-y-3">
-                          <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Tom de voz</p>
-                            <input
-                              value={agent.tone}
-                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'tone', event.target.value)}
-                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Objetivo</p>
-                            <textarea
-                              value={agent.goal}
-                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'goal', event.target.value)}
-                              rows={2}
-                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Prompt do agente</p>
-                            <textarea
-                              value={agent.prompt}
-                              onChange={(event) => handleWhatsappAgentChange(agent.name, 'prompt', event.target.value)}
-                              rows={5}
-                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
+                  <div className="config-tabs bg-white p-2 rounded-3xl border border-gray-100 shadow-sm flex flex-wrap gap-2">
+                    {whatsappConfigTabs.map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setWhatsappConfigTab(tab.id)}
+                        className={`config-tab-button flex items-center gap-2 px-4 py-3 rounded-2xl text-sm font-black transition-all ${
+                          whatsappConfigTab === tab.id
+                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100'
+                            : 'text-gray-500 hover:bg-gray-50'
+                        }`}
+                      >
+                        <tab.icon size={17} />
+                        {tab.label}
+                      </button>
                     ))}
                   </div>
 
+                  {whatsappConfigTab === 'agentes' && (
+                  <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Agentes</p>
+                        <h3 className="text-xl font-black text-gray-900">Lista de agentes</h3>
+                      </div>
+                      <p className="text-sm text-gray-500">Clique em configurar para editar objetivo, prompt e tom de voz.</p>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {whatsappAgentConfigs.map(agent => {
+                        const stats = getAgentConversationStats(agent.name);
+                        return (
+                        <div key={agent.name} className="p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-lg font-black text-gray-900">{agent.name}</h4>
+                              <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg ${agent.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                {agent.enabled ? 'Ativo' : 'Revisão'}
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mt-1">{agent.role}</p>
+                            <p className="text-sm text-gray-500 mt-2 max-w-xl">{agent.tone}</p>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-[140px_150px_130px] gap-3 xl:min-w-[460px]">
+                            <div className="bg-gray-50 rounded-2xl p-3">
+                              <p className="text-[10px] font-black uppercase text-gray-400">Ativas</p>
+                              <p className="text-xl font-black text-gray-900">{stats.active}</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-2xl p-3">
+                              <p className="text-[10px] font-black uppercase text-gray-400">Finalizadas</p>
+                              <p className="text-xl font-black text-gray-900">{stats.finished}</p>
+                            </div>
+                            <button
+                              onClick={() => setEditingWhatsappAgent(agent.name)}
+                              className="col-span-2 md:col-span-1 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all"
+                            >
+                              Configurar
+                            </button>
+                          </div>
+                        </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  )}
+
+                  {whatsappConfigTab === 'agentes' && (
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                       <Route className="text-emerald-600" size={20} />
@@ -2817,10 +2849,11 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
-              {whatsappEnvironment === 'configuracoes' && (
+              {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'base' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                     <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -2871,7 +2904,7 @@ export default function App() {
                 </div>
               )}
 
-              {whatsappEnvironment === 'configuracoes' && (
+              {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'automacoes' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[
                     ['Carrinho sem resposta', 'Enviar lembrete 2h depois com prova social e opção de finalizar.'],
@@ -2888,7 +2921,7 @@ export default function App() {
                 </div>
               )}
 
-              {whatsappEnvironment === 'configuracoes' && (
+              {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'integracoes' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
@@ -2915,6 +2948,80 @@ export default function App() {
                 </div>
               )}
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {editingAgent && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                className="bg-white p-6 rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto"
+              >
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+                  <div>
+                    <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">{editingAgent.role}</p>
+                    <h2 className="text-2xl font-black text-gray-900 mt-1">Configurar {editingAgent.name}</h2>
+                    <p className="text-sm text-gray-500 mt-2">Ajuste objetivo, tom e prompt do agente.</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-black text-gray-500 uppercase">
+                    <input
+                      type="checkbox"
+                      checked={editingAgent.enabled}
+                      onChange={(event) => handleWhatsappAgentChange(editingAgent.name, 'enabled', event.target.checked)}
+                      className="w-4 h-4 accent-emerald-600"
+                    />
+                    {editingAgent.enabled ? 'Ativo' : 'Revisão'}
+                  </label>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Tom de voz</p>
+                    <input
+                      value={editingAgent.tone}
+                      onChange={(event) => handleWhatsappAgentChange(editingAgent.name, 'tone', event.target.value)}
+                      className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Objetivo</p>
+                    <textarea
+                      value={editingAgent.goal}
+                      onChange={(event) => handleWhatsappAgentChange(editingAgent.name, 'goal', event.target.value)}
+                      rows={3}
+                      className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Prompt do agente</p>
+                    <textarea
+                      value={editingAgent.prompt}
+                      onChange={(event) => handleWhatsappAgentChange(editingAgent.name, 'prompt', event.target.value)}
+                      rows={8}
+                      className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setEditingWhatsappAgent(null)}
+                    className="px-5 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all"
+                  >
+                    Fechar
+                  </button>
+                  <button
+                    onClick={() => setEditingWhatsappAgent(null)}
+                    className="px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
 
