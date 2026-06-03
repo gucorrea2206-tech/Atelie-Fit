@@ -146,5 +146,15 @@ service cloud.firestore {
       allow update: if isAuthenticated() && isValidSale(request.resource.data);
       allow delete: if isAuthenticated();
     }
+
+    match /promokit_customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /promokit_orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
   }
 }
