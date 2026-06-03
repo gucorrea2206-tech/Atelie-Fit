@@ -503,7 +503,7 @@ const tabMeta: Record<AppTab, { label: string; title: string; description: strin
 const managementTabs: AppTab[] = ['estoque', 'producao', 'config', 'compras', 'contas'];
 const marketingTabs: AppTab[] = ['campanhas', 'fluxos', 'assistenteCampanhas'];
 const whatsappSubTabs: { id: WhatsAppEnvironment; label: string; icon: React.ElementType }[] = [
-  { id: 'dashboard', label: 'Dashboard do WhatsApp', icon: LayoutDashboard },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'atendimento', label: 'Atendimento', icon: MessageCircle },
   { id: 'leads', label: 'Leads', icon: UserPlus },
   { id: 'configuracoes', label: 'Configurações', icon: Settings },
@@ -1640,7 +1640,6 @@ export default function App() {
             id: 'whatsapp',
             label: 'WhatsApp',
             icon: MessageCircle,
-            tabs: ['whatsapp'],
             children: whatsappSubTabs.map(subTab => (
               <button
                 key={subTab.id}
