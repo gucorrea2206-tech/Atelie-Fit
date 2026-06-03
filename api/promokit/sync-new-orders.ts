@@ -133,16 +133,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const leadState = await leadStateRef.get();
       const lastLeadOrderCode = String(input.lastLeadOrderCode || leadState.data()?.lastOrderCode || "1");
       const leadsTake = Number(input.leadsTake || 50);
-      const leadResponse = await listPromokitLatestOrders({ lastOrderCode: lastLeadOrderCode, take: leadsTake, status: "todos" });
-      const leadOrders = extractOrders(leadResponse);
+      const leadsMaxPages = Math.max(1, Math.min(Number(input.leadsMaxPages || 5), 20));
       const leadSavedCodes: string[] = [];
+      let leadCursor = lastLeadOrderCode;
+      let leadPagesRead = 0;
 
-      for (const orderSummary of leadOrders) {
-        const code = String(orderSummary.codigo || "");
-        const fullOrder = code ? await getPromokitOrder(code).catch(() => ({ data: orderSummary })) : { data: orderSummary };
-        const order = fullOrder?.data || fullOrder || orderSummary;
-        const savedCode = await saveOrder(order);
-        if (savedCode) leadSavedCodes.push(savedCode);
+      for (let page = 0; page < leadsMaxPages; page += 1) {
+        const leadResponse = await listPromokitLatestOrders({ lastOrderCode: leadCursor, take: leadsTake, status: "todos" });
+        const leadOrders = extractOrders(leadResponse);
+        leadPagesRead += 1;
+        if (leadOrders.length === 0) break;
+
+        for (const orderSummary of leadOrders) {
+          const code = String(orderSummary.codigo || "");
+          const fullOrder = code ? await getPromokitOrder(code).catch(() => ({ data: orderSummary })) : { data: orderSummary };
+          const order = fullOrder?.data || fullOrder || orderSummary;
+          const savedCode = await saveOrder(order);
+          if (savedCode) leadSavedCodes.push(savedCode);
+        }
+
+        leadCursor = leadSavedCodes[leadSavedCodes.length - 1] || leadCursor;
+        if (leadOrders.length < leadsTake) break;
       }
 
       const nextLeadOrderCode = leadSavedCodes[leadSavedCodes.length - 1] || lastLeadOrderCode;
@@ -160,6 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         previousLastOrderCode: lastLeadOrderCode,
         nextLastOrderCode: nextLeadOrderCode,
         count: leadSavedCodes.length,
+        pagesRead: leadPagesRead,
         savedCodes: leadSavedCodes,
       };
     }

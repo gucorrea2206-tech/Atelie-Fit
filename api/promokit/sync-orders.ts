@@ -4,6 +4,10 @@ import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
 
+function extractOrders(response: any) {
+  return response?.data?.pedidos || response?.pedidos || [];
+}
+
 function normalizePhone(order: any) {
   return (
     order?.cliente?.telefone ||
@@ -80,30 +84,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const input = req.method === "POST" ? req.body || {} : req.query;
     const lastOrderCode = String(input.lastOrderCode || input.ultimoPedido || "1");
     const take = Number(input.take || input.t || 10);
+    const maxPages = Math.max(1, Math.min(Number(input.maxPages || 1), 20));
     const status = String(input.status || input.st || "novo");
     const processSales = input.processSales !== false && input.processSales !== "false";
-
-    const response = await listPromokitLatestOrders({ lastOrderCode, take, status });
-    const orders = response?.data?.pedidos || response?.pedidos || [];
     const savedCodes: string[] = [];
     const processedSales = [];
+    let cursor = lastOrderCode;
+    let pagesRead = 0;
 
-    for (const orderSummary of orders) {
-      const code = String(orderSummary.codigo || "");
-      const fullOrder = code ? await getPromokitOrder(code).catch(() => ({ data: orderSummary })) : { data: orderSummary };
-      const order = fullOrder?.data || fullOrder || orderSummary;
-      const savedCode = await saveOrder(order);
-      if (savedCode) savedCodes.push(savedCode);
+    for (let page = 0; page < maxPages; page += 1) {
+      const response = await listPromokitLatestOrders({ lastOrderCode: cursor, take, status });
+      const orders = extractOrders(response);
+      pagesRead += 1;
+      if (orders.length === 0) break;
 
-      if (processSales && savedCode) {
-        const processResult = await processPromokitOrder(order);
-        if (processResult) processedSales.push(processResult);
+      for (const orderSummary of orders) {
+        const code = String(orderSummary.codigo || "");
+        const fullOrder = code ? await getPromokitOrder(code).catch(() => ({ data: orderSummary })) : { data: orderSummary };
+        const order = fullOrder?.data || fullOrder || orderSummary;
+        const savedCode = await saveOrder(order);
+        if (savedCode) savedCodes.push(savedCode);
+
+        if (processSales && savedCode) {
+          const processResult = await processPromokitOrder(order);
+          if (processResult) processedSales.push(processResult);
+        }
       }
+
+      cursor = savedCodes[savedCodes.length - 1] || cursor;
+      if (orders.length < take) break;
     }
 
     return res.status(200).json({
       ok: true,
       count: savedCodes.length,
+      pagesRead,
       savedCodes,
       processedSales,
       nextLastOrderCode: savedCodes[savedCodes.length - 1] || lastOrderCode,

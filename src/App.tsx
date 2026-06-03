@@ -619,6 +619,7 @@ export default function App() {
         body: JSON.stringify({
           lastOrderCode: '1',
           take: 50,
+          maxPages: 10,
           status: 'todos',
           processSales: false,
         }),
