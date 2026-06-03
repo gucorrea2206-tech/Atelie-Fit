@@ -350,7 +350,7 @@ const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: st
   { key: 'recovery', title: 'Recuperação', description: 'Ofertas e abordagem para clientes parados.', placeholder: 'Ex: Clientes sem compra há 15 dias recebem sugestão de kit semanal...' },
 ];
 
-type AppTab = 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'whatsapp';
+type AppTab = 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'campanhas' | 'fluxos' | 'assistenteCampanhas' | 'whatsapp';
 
 const tabMeta: Record<AppTab, { label: string; title: string; description: string }> = {
   dashboard: {
@@ -393,6 +393,21 @@ const tabMeta: Record<AppTab, { label: string; title: string; description: strin
     title: 'Financeiro operacional',
     description: 'Controle contas, vencimentos e pagamentos recorrentes.',
   },
+  campanhas: {
+    label: 'Campanhas',
+    title: 'Campanhas',
+    description: 'Crie mensagens para disparar no WhatsApp para listas de clientes.',
+  },
+  fluxos: {
+    label: 'Fluxos',
+    title: 'Fluxos de resposta',
+    description: 'Configure o que acontece quando alguém responde uma campanha.',
+  },
+  assistenteCampanhas: {
+    label: 'Assistente de escrita',
+    title: 'Assistente de campanhas',
+    description: 'Configure o apoio interno para escrever mensagens comerciais.',
+  },
   whatsapp: {
     label: 'WhatsApp IA',
     title: 'WhatsApp IA',
@@ -400,8 +415,8 @@ const tabMeta: Record<AppTab, { label: string; title: string; description: strin
   },
 };
 
-const primaryTabs: AppTab[] = ['dashboard', 'estoque', 'producao', 'vendas'];
-const managementTabs: AppTab[] = ['config', 'compras', 'contas', 'whatsapp'];
+const managementTabs: AppTab[] = ['estoque', 'producao', 'config', 'compras', 'contas'];
+const marketingTabs: AppTab[] = ['campanhas', 'fluxos', 'assistenteCampanhas'];
 const whatsappSubTabs: { id: WhatsAppEnvironment; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard do WhatsApp', icon: LayoutDashboard },
   { id: 'atendimento', label: 'Atendimento', icon: MessageCircle },
@@ -412,7 +427,6 @@ const whatsappConfigTabs: { id: WhatsAppConfigTab; label: string; icon: React.El
   { id: 'agentes', label: 'Agentes', icon: Bot },
   { id: 'base', label: 'Base de cardápio', icon: Store },
   { id: 'automacoes', label: 'Automações', icon: RefreshCcw },
-  { id: 'campanhas', label: 'Campanhas', icon: Megaphone },
   { id: 'integracoes', label: 'Integrações', icon: PlugZap },
 ];
 
@@ -420,6 +434,12 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({
+    dashboard: true,
+    gestao: true,
+    marketing: true,
+    whatsapp: true,
+  });
   
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -1249,74 +1269,80 @@ export default function App() {
       return date && date >= startOfMonth(new Date()) && date <= endOfMonth(new Date());
     })
     .reduce((acc, s) => acc + s.value, 0);
+  const getTabIcon = (tab: AppTab) => {
+    const iconProps = { size: 18 };
+    if (tab === 'dashboard') return <LayoutDashboard {...iconProps} />;
+    if (tab === 'estoque') return <Package {...iconProps} />;
+    if (tab === 'producao') return <Plus {...iconProps} />;
+    if (tab === 'vendas') return <Minus {...iconProps} />;
+    if (tab === 'config') return <Store {...iconProps} />;
+    if (tab === 'compras') return <ShoppingCart {...iconProps} />;
+    if (tab === 'contas') return <CreditCard {...iconProps} />;
+    if (tab === 'campanhas') return <Megaphone {...iconProps} />;
+    if (tab === 'fluxos') return <Route {...iconProps} />;
+    if (tab === 'assistenteCampanhas') return <Brain {...iconProps} />;
+    if (tab === 'whatsapp') return <MessageCircle {...iconProps} />;
+    return <Settings {...iconProps} />;
+  };
+
+  const selectTab = (tab: AppTab) => {
+    setActiveTab(tab);
+    setPreview(null);
+    setInputText('');
+  };
+
   const renderNavButton = (tab: AppTab) => (
-    tab === 'whatsapp' ? (
-      <div key={tab} className="whatsapp-nav-group">
+    <button
+      key={tab}
+      onClick={() => selectTab(tab)}
+      className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
+        activeTab === tab
+          ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
+          : 'text-gray-500 hover:bg-gray-50'
+      }`}
+    >
+      {getTabIcon(tab)}
+      <span className="text-left">{tabMeta[tab].label}</span>
+    </button>
+  );
+
+  const renderNavGroup = ({
+    id,
+    label,
+    icon: Icon,
+    tabs = [],
+    children,
+  }: {
+    id: string;
+    label: string;
+    icon: React.ElementType;
+    tabs?: AppTab[];
+    children?: React.ReactNode;
+  }) => {
+    const isOpen = openNavGroups[id];
+    const isActive = tabs.includes(activeTab) || (id === 'whatsapp' && activeTab === 'whatsapp') || (id === 'dashboard' && activeTab === 'dashboard');
+
+    return (
+      <div className="nav-group">
         <button
-          onClick={() => {
-            setActiveTab('whatsapp');
-            setPreview(null);
-            setInputText('');
-          }}
-          className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
-            activeTab === 'whatsapp'
-              ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
-              : 'text-gray-500 hover:bg-gray-50'
+          onClick={() => setOpenNavGroups(current => ({ ...current, [id]: !current[id] }))}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-black transition-all ${
+            isActive ? 'text-gray-900 bg-gray-50' : 'text-gray-500 hover:bg-gray-50'
           }`}
         >
-          <MessageCircle size={18} />
-          <span className="flex-1 text-left">{tabMeta[tab].label}</span>
-          <ChevronDown size={15} className={`transition-transform ${activeTab === 'whatsapp' ? 'rotate-180' : ''}`} />
+          <Icon size={18} />
+          <span className="flex-1 text-left">{label}</span>
+          <ChevronDown size={15} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
-        {activeTab === 'whatsapp' && (
-          <div className="whatsapp-subnav mt-2 space-y-1">
-            {whatsappSubTabs.map(subTab => (
-              <button
-                key={subTab.id}
-                onClick={() => {
-                  setActiveTab('whatsapp');
-                  setWhatsappEnvironment(subTab.id);
-                  setPreview(null);
-                  setInputText('');
-                }}
-                className={`w-full flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
-                  whatsappEnvironment === subTab.id
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                <subTab.icon size={15} />
-                {subTab.label}
-              </button>
-            ))}
+        {isOpen && (
+          <div className="mt-2 space-y-1">
+            {tabs.map(renderNavButton)}
+            {children}
           </div>
         )}
       </div>
-    ) : (
-      <button
-        key={tab}
-        onClick={() => {
-          setActiveTab(tab);
-          setPreview(null);
-          setInputText('');
-        }}
-        className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
-          activeTab === tab
-            ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
-            : 'text-gray-500 hover:bg-gray-50'
-        }`}
-      >
-        {tab === 'dashboard' && <LayoutDashboard size={18} />}
-        {tab === 'estoque' && <Package size={18} />}
-        {tab === 'producao' && <Plus size={18} />}
-        {tab === 'vendas' && <Minus size={18} />}
-        {tab === 'config' && <Settings size={18} />}
-        {tab === 'compras' && <ShoppingCart size={18} />}
-        {tab === 'contas' && <CreditCard size={18} />}
-        {tabMeta[tab].label}
-      </button>
-    )
-  );
+    );
+  };
 
   return (
     <div className="workspace-shell min-h-screen bg-gray-50 flex flex-col md:flex-row">
@@ -1337,16 +1363,51 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 px-4 pb-4 space-y-5 overflow-x-auto md:overflow-x-visible flex md:flex-col no-scrollbar">
-          <div className="nav-group">
-            <p className="nav-section-title">Principal</p>
-            <div className="space-y-2">{primaryTabs.map(renderNavButton)}</div>
-          </div>
+        <nav className="flex-1 px-4 pb-4 space-y-3 overflow-x-auto md:overflow-x-visible flex md:flex-col no-scrollbar">
+          {renderNavGroup({
+            id: 'dashboard',
+            label: 'Dashboard',
+            icon: LayoutDashboard,
+            tabs: ['dashboard', 'vendas'],
+          })}
 
-          <div className="nav-group">
-            <p className="nav-section-title">Gestão</p>
-            <div className="space-y-2">{managementTabs.map(renderNavButton)}</div>
-          </div>
+          {renderNavGroup({
+            id: 'gestao',
+            label: 'Gestão',
+            icon: Settings,
+            tabs: managementTabs,
+          })}
+
+          {renderNavGroup({
+            id: 'marketing',
+            label: 'Marketing',
+            icon: Megaphone,
+            tabs: marketingTabs,
+          })}
+
+          {renderNavGroup({
+            id: 'whatsapp',
+            label: 'WhatsApp',
+            icon: MessageCircle,
+            tabs: ['whatsapp'],
+            children: whatsappSubTabs.map(subTab => (
+              <button
+                key={subTab.id}
+                onClick={() => {
+                  selectTab('whatsapp');
+                  setWhatsappEnvironment(subTab.id);
+                }}
+                className={`w-full flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                  activeTab === 'whatsapp' && whatsappEnvironment === subTab.id
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <subTab.icon size={15} />
+                {subTab.label}
+              </button>
+            )),
+          })}
         </nav>
 
         <div className="hidden md:block mx-4 mb-4">
@@ -2867,6 +2928,167 @@ export default function App() {
                   </motion.section>
                 )}
               </AnimatePresence>
+            </motion.div>
+          )}
+
+          {activeTab === 'campanhas' && (
+            <motion.div
+              key="campanhas"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-5"
+            >
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900">Campanhas</h2>
+                  <p className="text-sm text-gray-500 mt-1">Mensagens para disparar no WhatsApp para uma lista de clientes.</p>
+                </div>
+                <button
+                  onClick={handleAddWhatsappCampaign}
+                  className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all"
+                >
+                  <Plus size={18} />
+                  Nova campanha
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-4">
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-gray-100">
+                    <p className="text-xs font-black uppercase text-gray-400">Campanhas salvas</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {whatsappCampaigns.map(campaign => (
+                      <button key={campaign.id} className="w-full text-left p-4 hover:bg-gray-50 transition-all">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-black text-gray-900">{campaign.name}</p>
+                          <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-gray-100 text-gray-500 uppercase">{campaign.status}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{campaign.audience}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {whatsappCampaigns.map(campaign => (
+                    <div key={campaign.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_160px_150px] gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome da campanha</p>
+                          <input value={campaign.name} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Status</p>
+                          <select value={campaign.status} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'status', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none">
+                            <option>Rascunho</option>
+                            <option>Pronta</option>
+                            <option>Pausada</option>
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Agente</p>
+                          <select value={campaign.agent} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'agent', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none">
+                            {whatsappAgentConfigs.map(agent => <option key={agent.name} value={agent.name}>{agent.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input value={campaign.audience} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'audience', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                        <input value={campaign.objective} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'objective', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      <textarea value={campaign.initialMessage} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'initialMessage', event.target.value)} rows={4} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all">
+                          <FileText size={17} />
+                          Salvar rascunho
+                        </button>
+                        <button className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all">
+                          <Send size={17} />
+                          Preparar disparo
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'fluxos' && (
+            <motion.div
+              key="fluxos"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-5"
+            >
+              <div>
+                <h2 className="text-2xl font-black text-gray-900">Fluxos</h2>
+                <p className="text-sm text-gray-500 mt-1">Monte o caminho depois que alguém responder uma campanha.</p>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-4">
+                <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-3">
+                  <p className="text-xs font-black uppercase text-gray-400">Fluxos por campanha</p>
+                  {whatsappCampaigns.map(campaign => (
+                    <button key={campaign.id} className="w-full text-left p-4 rounded-2xl bg-gray-50 hover:bg-emerald-50 transition-all">
+                      <p className="font-black text-gray-900">{campaign.name}</p>
+                      <p className="text-xs text-gray-500 mt-1">{campaign.triggerKeyword}</p>
+                    </button>
+                  ))}
+                </div>
+                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-auto">
+                  <div className="min-w-[760px] flex items-center gap-4">
+                    {whatsappCampaigns.slice(0, 1).map(campaign => (
+                      <React.Fragment key={campaign.id}>
+                        <div className="w-60 p-4 rounded-2xl border border-emerald-100 bg-emerald-50">
+                          <p className="text-[10px] font-black uppercase text-emerald-700">Disparo</p>
+                          <p className="text-sm font-bold text-gray-900 mt-2">{campaign.initialMessage}</p>
+                        </div>
+                        <ChevronRight className="text-gray-300" size={24} />
+                        <div className="w-60 p-4 rounded-2xl border border-blue-100 bg-blue-50">
+                          <p className="text-[10px] font-black uppercase text-blue-700">Se responder</p>
+                          <textarea value={campaign.triggerKeyword} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'triggerKeyword', event.target.value)} rows={4} className="mt-2 w-full bg-white/80 rounded-xl px-3 py-2 text-xs text-gray-700 border border-blue-100 outline-none resize-none" />
+                        </div>
+                        <ChevronRight className="text-gray-300" size={24} />
+                        <div className="w-72 p-4 rounded-2xl border border-amber-100 bg-amber-50">
+                          <p className="text-[10px] font-black uppercase text-amber-700">Enviar próxima mensagem</p>
+                          <textarea value={campaign.flowReply} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'flowReply', event.target.value)} rows={5} className="mt-2 w-full bg-white/80 rounded-xl px-3 py-2 text-xs text-gray-700 border border-amber-100 outline-none resize-none" />
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'assistenteCampanhas' && (
+            <motion.div
+              key="assistente-campanhas"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm max-w-4xl space-y-4"
+            >
+              <h2 className="text-2xl font-black text-gray-900">Assistente de escrita</h2>
+              <div>
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome</p>
+                <input value={whatsappCampaignAssistant.name} onChange={(event) => handleWhatsappCampaignAssistantChange('name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Tom de escrita</p>
+                <input value={whatsappCampaignAssistant.tone} onChange={(event) => handleWhatsappCampaignAssistantChange('tone', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Treinamento</p>
+                <textarea value={whatsappCampaignAssistant.prompt} onChange={(event) => handleWhatsappCampaignAssistantChange('prompt', event.target.value)} rows={10} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+              </div>
+              <button onClick={handleSaveWhatsappAiConfig} disabled={isSavingWhatsappAi} className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60">
+                {isSavingWhatsappAi ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                Salvar configuração
+              </button>
             </motion.div>
           )}
 
