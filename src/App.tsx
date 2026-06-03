@@ -227,11 +227,13 @@ type WhatsAppAutomationConfig = {
 type WhatsAppCampaignConfig = {
   id: string;
   name: string;
-  status: 'Rascunho' | 'Pronta' | 'Pausada';
+  status: 'Rascunho' | 'Finalizada' | 'Pausada';
   audience: string;
   agent: string;
   objective: string;
   initialMessage: string;
+  randomizerEnabled: boolean;
+  messageVariants: string[];
   triggerKeyword: string;
   flowReply: string;
 };
@@ -325,6 +327,12 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     agent: 'Maya',
     objective: 'Reativar clientes parados com uma oferta leve.',
     initialMessage: 'Tenho um cupom disponível para você voltar essa semana. Quer que eu te mande?',
+    randomizerEnabled: true,
+    messageVariants: [
+      'Tenho um cupom disponível para você voltar essa semana. Quer que eu te mande?',
+      'Separei uma condição especial para você pedir de novo essa semana. Quer ver?',
+      'Tenho uma sugestão com cupom para facilitar sua semana. Posso te mandar?',
+    ],
     triggerKeyword: 'sim, quero, manda, cupom, quero ver',
     flowReply: 'Perfeito. Me conta se você quer marmitas para quantos dias que eu te mando as melhores opções com o cupom aplicado.',
   },
@@ -336,10 +344,39 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     agent: 'Nina',
     objective: 'Gerar pedidos de kits semanais.',
     initialMessage: 'Essa semana temos sugestões de kits práticos para deixar suas refeições prontas. Quer receber as opções?',
+    randomizerEnabled: false,
+    messageVariants: [
+      'Essa semana temos sugestões de kits práticos para deixar suas refeições prontas. Quer receber as opções?',
+    ],
     triggerKeyword: 'sim, opções, quero, manda',
     flowReply: 'Claro. Você prefere um kit com 5 ou 10 marmitas? E tem alguma restrição alimentar?',
   },
 ];
+
+const normalizeWhatsappCampaign = (campaign: Partial<WhatsAppCampaignConfig>, fallback?: WhatsAppCampaignConfig): WhatsAppCampaignConfig => {
+  const base = fallback || defaultWhatsappCampaigns[0];
+  const rawStatus = (campaign as { status?: string }).status;
+  const status = rawStatus === 'Pronta'
+    ? 'Finalizada'
+    : rawStatus === 'Finalizada' || rawStatus === 'Pausada' || rawStatus === 'Rascunho'
+    ? rawStatus
+    : 'Rascunho';
+  const initialMessage = campaign.initialMessage || base.initialMessage;
+  const messageVariants = Array.isArray(campaign.messageVariants) && campaign.messageVariants.length > 0
+    ? campaign.messageVariants
+    : [initialMessage];
+
+  return {
+    ...base,
+    ...campaign,
+    id: campaign.id || base.id,
+    name: campaign.name || base.name,
+    status,
+    initialMessage,
+    randomizerEnabled: Boolean(campaign.randomizerEnabled),
+    messageVariants,
+  };
+};
 
 const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: string; description: string; placeholder: string }[] = [
   { key: 'menu', title: 'Cardápio', description: 'Itens disponíveis, ingredientes e observações.', placeholder: 'Ex: Frango grelhado com legumes - marmita low carb...' },
@@ -457,6 +494,10 @@ export default function App() {
   const [whatsappAutomations, setWhatsappAutomations] = useState<WhatsAppAutomationConfig[]>(defaultWhatsappAutomations);
   const [whatsappCampaigns, setWhatsappCampaigns] = useState<WhatsAppCampaignConfig[]>(defaultWhatsappCampaigns);
   const [whatsappCampaignAssistant, setWhatsappCampaignAssistant] = useState<WhatsAppCampaignAssistantConfig>(defaultWhatsappCampaignAssistant);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(defaultWhatsappCampaigns[0].id);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(defaultWhatsappCampaigns[0].id);
+  const [selectedFlowCampaignId, setSelectedFlowCampaignId] = useState(defaultWhatsappCampaigns[0].id);
+  const [flowNodePositions, setFlowNodePositions] = useState<Record<string, { x: number; y: number }>>({});
   const [whatsappLeads, setWhatsappLeads] = useState<PromokitLead[]>([]);
   const [selectedAgentKnowledge, setSelectedAgentKnowledge] = useState(defaultWhatsappAgents[1].name);
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
@@ -595,10 +636,19 @@ export default function App() {
         })));
       }
       if (Array.isArray(data.campaigns)) {
-        setWhatsappCampaigns(defaultWhatsappCampaigns.map(defaultCampaign => ({
-          ...defaultCampaign,
-          ...(data.campaigns.find((campaign: WhatsAppCampaignConfig) => campaign.id === defaultCampaign.id) || {}),
-        })));
+        const savedCampaigns = data.campaigns as Partial<WhatsAppCampaignConfig>[];
+        const defaultCampaignIds = defaultWhatsappCampaigns.map(campaign => campaign.id);
+        const mergedDefaultCampaigns = defaultWhatsappCampaigns.map(defaultCampaign => (
+          normalizeWhatsappCampaign(
+            savedCampaigns.find(campaign => campaign.id === defaultCampaign.id) || {},
+            defaultCampaign,
+          )
+        ));
+        const customCampaigns = savedCampaigns
+          .filter(campaign => campaign.id && !defaultCampaignIds.includes(campaign.id))
+          .map(campaign => normalizeWhatsappCampaign(campaign));
+
+        setWhatsappCampaigns([...mergedDefaultCampaigns, ...customCampaigns]);
       }
       if (data.campaignAssistant) {
         setWhatsappCampaignAssistant({
@@ -786,7 +836,7 @@ export default function App() {
     );
   };
 
-  const handleWhatsappCampaignChange = (campaignId: string, field: keyof WhatsAppCampaignConfig, value: string) => {
+  const handleWhatsappCampaignChange = (campaignId: string, field: keyof WhatsAppCampaignConfig, value: string | boolean | string[]) => {
     setWhatsappCampaigns(currentCampaigns =>
       currentCampaigns.map(campaign =>
         campaign.id === campaignId ? { ...campaign, [field]: value } : campaign
@@ -796,20 +846,63 @@ export default function App() {
 
   const handleAddWhatsappCampaign = () => {
     const timestamp = Date.now();
+    const id = `campanha_${timestamp}`;
     setWhatsappCampaigns(currentCampaigns => [
       ...currentCampaigns,
       {
-        id: `campanha_${timestamp}`,
+        id,
         name: 'Nova campanha',
         status: 'Rascunho',
         audience: 'Selecionar público',
         agent: 'Maya',
         objective: 'Definir objetivo comercial da campanha.',
         initialMessage: 'Tenho uma novidade para você. Quer que eu te mande?',
+        randomizerEnabled: false,
+        messageVariants: ['Tenho uma novidade para você. Quer que eu te mande?'],
         triggerKeyword: 'sim, quero, manda',
         flowReply: 'Perfeito. Vou te mandar as opções agora.',
       },
     ]);
+    setSelectedCampaignId(id);
+    setEditingCampaignId(id);
+    setSelectedFlowCampaignId(id);
+  };
+
+  const handleWhatsappCampaignVariantChange = (campaignId: string, index: number, value: string) => {
+    setWhatsappCampaigns(currentCampaigns =>
+      currentCampaigns.map(campaign => {
+        if (campaign.id !== campaignId) return campaign;
+        const variants = [...(campaign.messageVariants || [campaign.initialMessage])];
+        variants[index] = value;
+        return {
+          ...campaign,
+          messageVariants: variants,
+          initialMessage: index === 0 ? value : campaign.initialMessage,
+        };
+      })
+    );
+  };
+
+  const handleAddWhatsappCampaignVariant = (campaignId: string) => {
+    setWhatsappCampaigns(currentCampaigns =>
+      currentCampaigns.map(campaign =>
+        campaign.id === campaignId
+          ? { ...campaign, messageVariants: [...(campaign.messageVariants || []), campaign.initialMessage] }
+          : campaign
+      )
+    );
+  };
+
+  const handleFlowNodeDrop = (event: React.DragEvent<HTMLDivElement>, campaignId: string, nodeId: string) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setFlowNodePositions(current => ({
+      ...current,
+      [`${campaignId}:${nodeId}`]: {
+        x: Math.max(16, event.clientX - rect.left - 120),
+        y: Math.max(16, event.clientY - rect.top - 48),
+      },
+    }));
   };
 
   const handleWhatsappCampaignAssistantChange = (field: keyof WhatsAppCampaignAssistantConfig, value: string) => {
@@ -1240,6 +1333,9 @@ export default function App() {
 
   const selectedConversation = whatsappConversations.find(c => c.id === selectedWhatsappConversation) || whatsappConversations[0];
   const editingAgent = whatsappAgentConfigs.find(agent => agent.name === editingWhatsappAgent) || null;
+  const selectedCampaign = whatsappCampaigns.find(campaign => campaign.id === selectedCampaignId) || whatsappCampaigns[0];
+  const selectedFlowCampaign = whatsappCampaigns.find(campaign => campaign.id === selectedFlowCampaignId) || selectedCampaign;
+  const isSelectedCampaignEditing = selectedCampaign?.status === 'Rascunho' || editingCampaignId === selectedCampaign?.id;
   const getSaleOrderNumber = (sale: Sale) => sale.orderNumber || sale.promokitOrderCode || sale.id.slice(0, 6).toUpperCase();
   const getAgentConversationStats = (agentName: string) => {
     const active = whatsappConversations.filter(conversation => conversation.agent === agentName).length;
@@ -1269,6 +1365,8 @@ export default function App() {
       return date && date >= startOfMonth(new Date()) && date <= endOfMonth(new Date());
     })
     .reduce((acc, s) => acc + s.value, 0);
+  const getFlowNodePosition = (campaignId: string, nodeId: string, fallback: { x: number; y: number }) =>
+    flowNodePositions[`${campaignId}:${nodeId}`] || fallback;
   const getTabIcon = (tab: AppTab) => {
     const iconProps = { size: 18 };
     if (tab === 'dashboard') return <LayoutDashboard {...iconProps} />;
@@ -2960,10 +3058,21 @@ export default function App() {
                   </div>
                   <div className="divide-y divide-gray-100">
                     {whatsappCampaigns.map(campaign => (
-                      <button key={campaign.id} className="w-full text-left p-4 hover:bg-gray-50 transition-all">
+                      <button
+                        key={campaign.id}
+                        onClick={() => {
+                          setSelectedCampaignId(campaign.id);
+                          if (campaign.status === 'Rascunho') setEditingCampaignId(campaign.id);
+                        }}
+                        className={`w-full text-left p-4 transition-all ${
+                          selectedCampaign?.id === campaign.id ? 'bg-emerald-50' : 'hover:bg-gray-50'
+                        }`}
+                      >
                         <div className="flex items-center justify-between gap-3">
                           <p className="font-black text-gray-900">{campaign.name}</p>
-                          <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-gray-100 text-gray-500 uppercase">{campaign.status}</span>
+                          <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase ${
+                            campaign.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>{campaign.status}</span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">{campaign.audience}</p>
                       </button>
@@ -2971,47 +3080,88 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  {whatsappCampaigns.map(campaign => (
-                    <div key={campaign.id} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                {selectedCampaign && (
+                  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase text-gray-400">Campanha selecionada</p>
+                        <h3 className="text-2xl font-black text-gray-900 mt-1">{selectedCampaign.name}</h3>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCampaign.status !== 'Rascunho' && editingCampaignId !== selectedCampaign.id && (
+                          <button
+                            onClick={() => setEditingCampaignId(selectedCampaign.id)}
+                            className="px-4 py-2.5 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all"
+                          >
+                            Editar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedFlowCampaignId(selectedCampaign.id);
+                            selectTab('fluxos');
+                          }}
+                          className="px-4 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all"
+                        >
+                          Abrir fluxo
+                        </button>
+                      </div>
+                    </div>
+
+                    {isSelectedCampaignEditing ? (
+                      <>
                       <div className="grid grid-cols-1 md:grid-cols-[1fr_160px_150px] gap-3">
                         <div>
                           <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome da campanha</p>
-                          <input value={campaign.name} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                          <input value={selectedCampaign.name} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Status</p>
-                          <select value={campaign.status} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'status', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none">
+                          <select value={selectedCampaign.status} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'status', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none">
                             <option>Rascunho</option>
-                            <option>Pronta</option>
+                            <option>Finalizada</option>
                             <option>Pausada</option>
                           </select>
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Agente</p>
-                          <select value={campaign.agent} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'agent', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none">
+                          <select value={selectedCampaign.agent} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'agent', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none">
                             {whatsappAgentConfigs.map(agent => <option key={agent.name} value={agent.name}>{agent.name}</option>)}
                           </select>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input value={campaign.audience} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'audience', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
-                        <input value={campaign.objective} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'objective', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                        <input value={selectedCampaign.audience} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'audience', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                        <input value={selectedCampaign.objective} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'objective', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
                       </div>
-                      <textarea value={campaign.initialMessage} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'initialMessage', event.target.value)} rows={4} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+                      <textarea value={selectedCampaign.initialMessage} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'initialMessage', event.target.value)} rows={4} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
                       <div className="flex flex-col sm:flex-row gap-3">
-                        <button className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all">
+                        <button onClick={() => setEditingCampaignId(null)} className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all">
                           <FileText size={17} />
-                          Salvar rascunho
+                          Fechar edição
                         </button>
-                        <button className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all">
-                          <Send size={17} />
-                          Preparar disparo
+                        <button onClick={() => { handleWhatsappCampaignChange(selectedCampaign.id, 'status', 'Finalizada'); setEditingCampaignId(null); }} className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all">
+                          <Check size={17} />
+                          Finalizar campanha
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                      </>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[10px] font-black uppercase text-gray-400">Status</p><p className="font-black text-gray-900 mt-1">{selectedCampaign.status}</p></div>
+                          <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[10px] font-black uppercase text-gray-400">Público</p><p className="font-black text-gray-900 mt-1">{selectedCampaign.audience}</p></div>
+                          <div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[10px] font-black uppercase text-gray-400">Agente</p><p className="font-black text-gray-900 mt-1">{selectedCampaign.agent}</p></div>
+                        </div>
+                        <div className="p-5 bg-gray-50 rounded-2xl">
+                          <p className="text-[10px] font-black uppercase text-gray-400">Mensagem</p>
+                          <p className="text-sm text-gray-700 mt-2">{selectedCampaign.initialMessage}</p>
+                        </div>
+                        <p className="text-xs text-gray-500">Campanhas finalizadas são disparadas e continuadas pela aba Fluxos.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -3024,42 +3174,143 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-5"
             >
-              <div>
-                <h2 className="text-2xl font-black text-gray-900">Fluxos</h2>
-                <p className="text-sm text-gray-500 mt-1">Monte o caminho depois que alguém responder uma campanha.</p>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900">Fluxos</h2>
+                  <p className="text-sm text-gray-500 mt-1">Monte a sequência depois do disparo da campanha.</p>
+                </div>
+                <button
+                  onClick={handleSaveWhatsappAiConfig}
+                  className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all"
+                >
+                  <Check size={18} />
+                  Salvar fluxo
+                </button>
               </div>
-              <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-4">
+
+              <div className="grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-4">
                 <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-3">
-                  <p className="text-xs font-black uppercase text-gray-400">Fluxos por campanha</p>
+                  <p className="text-xs font-black uppercase text-gray-400">Início do fluxo</p>
                   {whatsappCampaigns.map(campaign => (
-                    <button key={campaign.id} className="w-full text-left p-4 rounded-2xl bg-gray-50 hover:bg-emerald-50 transition-all">
+                    <button
+                      key={campaign.id}
+                      onClick={() => setSelectedFlowCampaignId(campaign.id)}
+                      className={`w-full text-left p-4 rounded-2xl transition-all ${
+                        selectedFlowCampaign?.id === campaign.id ? 'bg-emerald-50 ring-2 ring-emerald-100' : 'bg-gray-50 hover:bg-emerald-50'
+                      }`}
+                    >
                       <p className="font-black text-gray-900">{campaign.name}</p>
-                      <p className="text-xs text-gray-500 mt-1">{campaign.triggerKeyword}</p>
+                      <p className="text-xs text-gray-500 mt-1">{campaign.status}</p>
                     </button>
                   ))}
+                  {selectedFlowCampaign && (
+                    <div className="pt-3 border-t border-gray-100 space-y-3">
+                      <label className="flex items-center gap-2 text-sm font-black text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={selectedFlowCampaign.randomizerEnabled}
+                          onChange={(event) => handleWhatsappCampaignChange(selectedFlowCampaign.id, 'randomizerEnabled', event.target.checked)}
+                          className="w-4 h-4 accent-emerald-600"
+                        />
+                        Randomizar mensagens
+                      </label>
+                      <p className="text-xs text-gray-500">Use variações no primeiro disparo para reduzir repetição no número.</p>
+                      {(selectedFlowCampaign.messageVariants || [selectedFlowCampaign.initialMessage]).map((variant, index) => (
+                        <textarea
+                          key={`${selectedFlowCampaign.id}-variant-${index}`}
+                          value={variant}
+                          onChange={(event) => handleWhatsappCampaignVariantChange(selectedFlowCampaign.id, index, event.target.value)}
+                          rows={3}
+                          className="w-full bg-gray-50 rounded-2xl px-3 py-2 text-xs text-gray-700 border border-gray-100 outline-none resize-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      ))}
+                      <button
+                        onClick={() => handleAddWhatsappCampaignVariant(selectedFlowCampaign.id)}
+                        className="w-full px-3 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-black hover:bg-gray-200 transition-all"
+                      >
+                        Adicionar variação
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-auto">
-                  <div className="min-w-[760px] flex items-center gap-4">
-                    {whatsappCampaigns.slice(0, 1).map(campaign => (
-                      <React.Fragment key={campaign.id}>
-                        <div className="w-60 p-4 rounded-2xl border border-emerald-100 bg-emerald-50">
-                          <p className="text-[10px] font-black uppercase text-emerald-700">Disparo</p>
-                          <p className="text-sm font-bold text-gray-900 mt-2">{campaign.initialMessage}</p>
-                        </div>
-                        <ChevronRight className="text-gray-300" size={24} />
-                        <div className="w-60 p-4 rounded-2xl border border-blue-100 bg-blue-50">
-                          <p className="text-[10px] font-black uppercase text-blue-700">Se responder</p>
-                          <textarea value={campaign.triggerKeyword} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'triggerKeyword', event.target.value)} rows={4} className="mt-2 w-full bg-white/80 rounded-xl px-3 py-2 text-xs text-gray-700 border border-blue-100 outline-none resize-none" />
-                        </div>
-                        <ChevronRight className="text-gray-300" size={24} />
-                        <div className="w-72 p-4 rounded-2xl border border-amber-100 bg-amber-50">
-                          <p className="text-[10px] font-black uppercase text-amber-700">Enviar próxima mensagem</p>
-                          <textarea value={campaign.flowReply} onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'flowReply', event.target.value)} rows={5} className="mt-2 w-full bg-white/80 rounded-xl px-3 py-2 text-xs text-gray-700 border border-amber-100 outline-none resize-none" />
-                        </div>
-                      </React.Fragment>
+
+                {selectedFlowCampaign && (
+                <div
+                  className="relative bg-white rounded-3xl border border-gray-100 shadow-sm overflow-auto min-h-[660px]"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    const nodeId = event.dataTransfer.getData('text/plain');
+                    if (nodeId) handleFlowNodeDrop(event, selectedFlowCampaign.id, nodeId);
+                  }}
+                >
+                  <div className="absolute inset-0 opacity-50" style={{ backgroundImage: 'radial-gradient(circle, rgba(111,128,121,0.22) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+                  <svg className="absolute inset-0 w-[980px] h-[620px] pointer-events-none">
+                    {(() => {
+                      const start = getFlowNodePosition(selectedFlowCampaign.id, 'start', { x: 40, y: 80 });
+                      const wait = getFlowNodePosition(selectedFlowCampaign.id, 'wait', { x: 360, y: 80 });
+                      const reply = getFlowNodePosition(selectedFlowCampaign.id, 'reply', { x: 680, y: 80 });
+                      return (
+                        <>
+                          <line x1={start.x + 250} y1={start.y + 70} x2={wait.x} y2={wait.y + 70} stroke="#cbd8d1" strokeWidth="2" strokeDasharray="6 6" />
+                          <line x1={wait.x + 250} y1={wait.y + 70} x2={reply.x} y2={reply.y + 70} stroke="#cbd8d1" strokeWidth="2" strokeDasharray="6 6" />
+                        </>
+                      );
+                    })()}
+                  </svg>
+                  {[
+                    { id: 'start', title: selectedFlowCampaign.randomizerEnabled ? 'Randomizador' : 'Campanha', tone: 'emerald', position: getFlowNodePosition(selectedFlowCampaign.id, 'start', { x: 40, y: 80 }) },
+                    { id: 'wait', title: 'Esperar resposta', tone: 'blue', position: getFlowNodePosition(selectedFlowCampaign.id, 'wait', { x: 360, y: 80 }) },
+                    { id: 'reply', title: 'Mensagem do fluxo', tone: 'amber', position: getFlowNodePosition(selectedFlowCampaign.id, 'reply', { x: 680, y: 80 }) },
+                  ].map(node => (
+                    <div
+                      key={node.id}
+                      draggable
+                      onDragStart={(event) => event.dataTransfer.setData('text/plain', node.id)}
+                      className={`absolute w-64 cursor-move rounded-2xl border p-4 shadow-sm ${
+                        node.tone === 'emerald' ? 'bg-emerald-50 border-emerald-100' :
+                        node.tone === 'blue' ? 'bg-blue-50 border-blue-100' :
+                        'bg-amber-50 border-amber-100'
+                      }`}
+                      style={{ left: node.position.x, top: node.position.y }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-black uppercase text-gray-500">{node.title}</p>
+                        <span className="w-3 h-3 rounded-full bg-white border border-gray-200" />
+                      </div>
+                      {node.id === 'start' && (
+                        <p className="text-sm font-bold text-gray-900 mt-3">
+                          {selectedFlowCampaign.randomizerEnabled
+                            ? `${selectedFlowCampaign.messageVariants?.length || 1} variação(ões) de disparo`
+                            : selectedFlowCampaign.initialMessage}
+                        </p>
+                      )}
+                      {node.id === 'wait' && (
+                        <textarea
+                          value={selectedFlowCampaign.triggerKeyword}
+                          onChange={(event) => handleWhatsappCampaignChange(selectedFlowCampaign.id, 'triggerKeyword', event.target.value)}
+                          rows={4}
+                          className="mt-3 w-full bg-white/80 rounded-xl px-3 py-2 text-xs text-gray-700 border border-blue-100 outline-none resize-none"
+                        />
+                      )}
+                      {node.id === 'reply' && (
+                        <textarea
+                          value={selectedFlowCampaign.flowReply}
+                          onChange={(event) => handleWhatsappCampaignChange(selectedFlowCampaign.id, 'flowReply', event.target.value)}
+                          rows={5}
+                          className="mt-3 w-full bg-white/80 rounded-xl px-3 py-2 text-xs text-gray-700 border border-amber-100 outline-none resize-none"
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <div className="absolute bottom-5 left-5 right-5 flex flex-wrap gap-2">
+                    {['Mensagem', 'Condição', 'Espera', 'Randomizador', 'Transferir agente'].map(item => (
+                      <button key={item} className="px-3 py-2 rounded-xl bg-white text-xs font-black text-gray-500 border border-gray-100 shadow-sm">
+                        {item}
+                      </button>
                     ))}
                   </div>
                 </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -3646,7 +3897,7 @@ export default function App() {
                                 className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none"
                               >
                                 <option>Rascunho</option>
-                                <option>Pronta</option>
+                                <option>Finalizada</option>
                                 <option>Pausada</option>
                               </select>
                             </div>
