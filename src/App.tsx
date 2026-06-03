@@ -120,7 +120,7 @@ function ErrorDisplay({ error, onRetry }: { error: string, onRetry: () => void }
 }
 
 type WhatsAppEnvironment = 'dashboard' | 'atendimento' | 'leads' | 'configuracoes';
-type WhatsAppConfigTab = 'agentes' | 'base' | 'automacoes' | 'integracoes';
+type WhatsAppConfigTab = 'agentes' | 'base' | 'automacoes' | 'campanhas' | 'integracoes';
 
 const whatsappConversations = [
   {
@@ -199,6 +199,7 @@ type WhatsAppAgentConfig = {
   tone: string;
   goal: string;
   prompt: string;
+  handoffRules: string;
   enabled: boolean;
 };
 
@@ -223,6 +224,24 @@ type WhatsAppAutomationConfig = {
   message: string;
 };
 
+type WhatsAppCampaignConfig = {
+  id: string;
+  name: string;
+  status: 'Rascunho' | 'Pronta' | 'Pausada';
+  audience: string;
+  agent: string;
+  objective: string;
+  initialMessage: string;
+  triggerKeyword: string;
+  flowReply: string;
+};
+
+type WhatsAppCampaignAssistantConfig = {
+  name: string;
+  tone: string;
+  prompt: string;
+};
+
 const defaultWhatsappAgents: WhatsAppAgentConfig[] = whatsappAgents.map(agent => ({
   ...agent,
   status: agent.status as 'Ativo' | 'Revisão',
@@ -232,6 +251,11 @@ const defaultWhatsappAgents: WhatsAppAgentConfig[] = whatsappAgents.map(agent =>
     agent.name === 'Nina' ? 'Atenda dúvidas de cardápio, preços, kits, combos, entrega e objetivos alimentares. Recomende opções usando apenas a base comercial cadastrada.' :
     agent.name === 'Caio' ? 'Resolva problemas de atraso, pedido incorreto, troca, cancelamento e reclamações. Seja calmo, peça dados essenciais e acione humano em casos sensíveis.' :
     'Recupere clientes parados e orçamentos sem resposta com abordagem gentil, objetiva e sem insistência.',
+  handoffRules:
+    agent.name === 'Lia' ? 'Transferir para Nina quando houver intenção de compra, cardápio, preço, combo ou entrega. Transferir para Caio quando houver problema, atraso, troca, cancelamento ou reclamação. Transferir para Maya quando houver cliente parado, cupom de retorno ou orçamento sem resposta.' :
+    agent.name === 'Nina' ? 'Transferir para Caio quando a conversa virar reclamação, atraso, pedido errado, cancelamento ou suporte. Transferir para humano quando faltar informação confiável, houver irritação ou risco financeiro.' :
+    agent.name === 'Caio' ? 'Transferir para Nina quando o problema for resolvido e o cliente quiser comprar novamente. Transferir para humano em reclamação forte, pedido sensível ou caso sem informação suficiente.' :
+    'Transferir para Nina quando o cliente demonstrar intenção clara de compra. Transferir para Caio se a resposta virar problema, reclamação ou suporte.',
 }));
 
 const defaultWhatsappKnowledge: WhatsAppKnowledgeConfig = {
@@ -283,6 +307,37 @@ const defaultWhatsappAutomations: WhatsAppAutomationConfig[] = [
     enabled: true,
     agent: 'Nina',
     message: 'Quando um item estiver baixo, sugerir a alternativa mais próxima disponível no estoque.',
+  },
+];
+
+const defaultWhatsappCampaignAssistant: WhatsAppCampaignAssistantConfig = {
+  name: 'Clara',
+  tone: 'Criativo, comercial, direto e respeitoso',
+  prompt: 'Ajude a criar campanhas de WhatsApp para o Ateliê Fit. Sugira mensagens curtas, humanas e sem pressão, com gatilho claro de resposta e fluxo de continuidade. Não prometa desconto, prazo ou disponibilidade sem estar na base cadastrada.',
+};
+
+const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
+  {
+    id: 'cupom_retorno',
+    name: 'Cupom de retorno',
+    status: 'Rascunho',
+    audience: 'Clientes sem compra há 15 dias',
+    agent: 'Maya',
+    objective: 'Reativar clientes parados com uma oferta leve.',
+    initialMessage: 'Tenho um cupom disponível para você voltar essa semana. Quer que eu te mande?',
+    triggerKeyword: 'sim, quero, manda, cupom, quero ver',
+    flowReply: 'Perfeito. Me conta se você quer marmitas para quantos dias que eu te mando as melhores opções com o cupom aplicado.',
+  },
+  {
+    id: 'kit_semana',
+    name: 'Kit da semana',
+    status: 'Rascunho',
+    audience: 'Leads e clientes ativos',
+    agent: 'Nina',
+    objective: 'Gerar pedidos de kits semanais.',
+    initialMessage: 'Essa semana temos sugestões de kits práticos para deixar suas refeições prontas. Quer receber as opções?',
+    triggerKeyword: 'sim, opções, quero, manda',
+    flowReply: 'Claro. Você prefere um kit com 5 ou 10 marmitas? E tem alguma restrição alimentar?',
   },
 ];
 
@@ -357,6 +412,7 @@ const whatsappConfigTabs: { id: WhatsAppConfigTab; label: string; icon: React.El
   { id: 'agentes', label: 'Agentes', icon: Bot },
   { id: 'base', label: 'Base de cardápio', icon: Store },
   { id: 'automacoes', label: 'Automações', icon: RefreshCcw },
+  { id: 'campanhas', label: 'Campanhas', icon: Megaphone },
   { id: 'integracoes', label: 'Integrações', icon: PlugZap },
 ];
 
@@ -379,6 +435,8 @@ export default function App() {
   const [whatsappKnowledge, setWhatsappKnowledge] = useState<WhatsAppKnowledgeConfig>(defaultWhatsappKnowledge);
   const [whatsappAgentKnowledge, setWhatsappAgentKnowledge] = useState<WhatsAppAgentKnowledgeConfig>(defaultAgentKnowledge);
   const [whatsappAutomations, setWhatsappAutomations] = useState<WhatsAppAutomationConfig[]>(defaultWhatsappAutomations);
+  const [whatsappCampaigns, setWhatsappCampaigns] = useState<WhatsAppCampaignConfig[]>(defaultWhatsappCampaigns);
+  const [whatsappCampaignAssistant, setWhatsappCampaignAssistant] = useState<WhatsAppCampaignAssistantConfig>(defaultWhatsappCampaignAssistant);
   const [whatsappLeads, setWhatsappLeads] = useState<PromokitLead[]>([]);
   const [selectedAgentKnowledge, setSelectedAgentKnowledge] = useState(defaultWhatsappAgents[1].name);
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
@@ -515,6 +573,18 @@ export default function App() {
           ...defaultAutomation,
           ...(data.automations.find((automation: WhatsAppAutomationConfig) => automation.id === defaultAutomation.id) || {}),
         })));
+      }
+      if (Array.isArray(data.campaigns)) {
+        setWhatsappCampaigns(defaultWhatsappCampaigns.map(defaultCampaign => ({
+          ...defaultCampaign,
+          ...(data.campaigns.find((campaign: WhatsAppCampaignConfig) => campaign.id === defaultCampaign.id) || {}),
+        })));
+      }
+      if (data.campaignAssistant) {
+        setWhatsappCampaignAssistant({
+          ...defaultWhatsappCampaignAssistant,
+          ...data.campaignAssistant,
+        });
       }
       if (data.updatedAt) {
         setWhatsappAiSavedAt(data.updatedAt);
@@ -696,6 +766,39 @@ export default function App() {
     );
   };
 
+  const handleWhatsappCampaignChange = (campaignId: string, field: keyof WhatsAppCampaignConfig, value: string) => {
+    setWhatsappCampaigns(currentCampaigns =>
+      currentCampaigns.map(campaign =>
+        campaign.id === campaignId ? { ...campaign, [field]: value } : campaign
+      )
+    );
+  };
+
+  const handleAddWhatsappCampaign = () => {
+    const timestamp = Date.now();
+    setWhatsappCampaigns(currentCampaigns => [
+      ...currentCampaigns,
+      {
+        id: `campanha_${timestamp}`,
+        name: 'Nova campanha',
+        status: 'Rascunho',
+        audience: 'Selecionar público',
+        agent: 'Maya',
+        objective: 'Definir objetivo comercial da campanha.',
+        initialMessage: 'Tenho uma novidade para você. Quer que eu te mande?',
+        triggerKeyword: 'sim, quero, manda',
+        flowReply: 'Perfeito. Vou te mandar as opções agora.',
+      },
+    ]);
+  };
+
+  const handleWhatsappCampaignAssistantChange = (field: keyof WhatsAppCampaignAssistantConfig, value: string) => {
+    setWhatsappCampaignAssistant(currentAssistant => ({
+      ...currentAssistant,
+      [field]: value,
+    }));
+  };
+
   const handleRunWhatsappAutomations = async () => {
     setIsRunningAutomations(true);
     setAutomationResult(null);
@@ -736,6 +839,8 @@ export default function App() {
         },
         agentKnowledge: whatsappAgentKnowledge,
         automations: whatsappAutomations,
+        campaigns: whatsappCampaigns,
+        campaignAssistant: whatsappCampaignAssistant,
         updatedAt,
       }, { merge: true });
       setWhatsappAiSavedAt(updatedAt);
@@ -3244,6 +3349,164 @@ export default function App() {
                 </div>
               )}
 
+              {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'campanhas' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-700">
+                          <Megaphone size={22} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Agente interno</p>
+                          <h3 className="text-xl font-black text-gray-900">Criador de campanhas</h3>
+                          <p className="text-sm text-gray-500 mt-1">Esse agente ajuda você a montar mensagens e fluxos. Ele não aparece para o cliente.</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome do agente</p>
+                        <input
+                          value={whatsappCampaignAssistant.name}
+                          onChange={(event) => handleWhatsappCampaignAssistantChange('name', event.target.value)}
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Tom de criação</p>
+                        <input
+                          value={whatsappCampaignAssistant.tone}
+                          onChange={(event) => handleWhatsappCampaignAssistantChange('tone', event.target.value)}
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Treinamento do agente</p>
+                        <textarea
+                          value={whatsappCampaignAssistant.prompt}
+                          onChange={(event) => handleWhatsappCampaignAssistantChange('prompt', event.target.value)}
+                          rows={8}
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-xl font-black text-gray-900">Disparos e fluxos</h3>
+                          <p className="text-sm text-gray-500">Crie campanhas com mensagem inicial e resposta de continuidade por palavra-chave.</p>
+                        </div>
+                        <button
+                          onClick={handleAddWhatsappCampaign}
+                          className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all"
+                        >
+                          <Plus size={18} />
+                          Nova campanha
+                        </button>
+                      </div>
+
+                      {whatsappCampaigns.map(campaign => (
+                        <div key={campaign.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_160px_150px] gap-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome da campanha</p>
+                              <input
+                                value={campaign.name}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'name', event.target.value)}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Status</p>
+                              <select
+                                value={campaign.status}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'status', event.target.value)}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none"
+                              >
+                                <option>Rascunho</option>
+                                <option>Pronta</option>
+                                <option>Pausada</option>
+                              </select>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Agente</p>
+                              <select
+                                value={campaign.agent}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'agent', event.target.value)}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none"
+                              >
+                                {whatsappAgentConfigs.map(agent => <option key={agent.name} value={agent.name}>{agent.name}</option>)}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Público</p>
+                              <input
+                                value={campaign.audience}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'audience', event.target.value)}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Objetivo</p>
+                              <input
+                                value={campaign.objective}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'objective', event.target.value)}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Mensagem do disparo</p>
+                            <textarea
+                              value={campaign.initialMessage}
+                              onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'initialMessage', event.target.value)}
+                              rows={3}
+                              className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-[0.75fr_1.25fr] gap-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Resposta que ativa o fluxo</p>
+                              <textarea
+                                value={campaign.triggerKeyword}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'triggerKeyword', event.target.value)}
+                                rows={4}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Mensagem seguinte do fluxo</p>
+                              <textarea
+                                value={campaign.flowReply}
+                                onChange={(event) => handleWhatsappCampaignChange(campaign.id, 'flowReply', event.target.value)}
+                                rows={4}
+                                className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <button className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all">
+                              <FileText size={17} />
+                              Salvar rascunho
+                            </button>
+                            <button className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all">
+                              <Send size={17} />
+                              Preparar disparo
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {whatsappEnvironment === 'configuracoes' && whatsappConfigTab === 'integracoes' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3315,6 +3578,15 @@ export default function App() {
                       value={editingAgent.goal}
                       onChange={(event) => handleWhatsappAgentChange(editingAgent.name, 'goal', event.target.value)}
                       rows={3}
+                      className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase mb-2">Quando passar para outro agente</p>
+                    <textarea
+                      value={editingAgent.handoffRules}
+                      onChange={(event) => handleWhatsappAgentChange(editingAgent.name, 'handoffRules', event.target.value)}
+                      rows={4}
                       className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
                     />
                   </div>

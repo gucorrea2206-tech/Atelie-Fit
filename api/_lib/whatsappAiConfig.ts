@@ -9,6 +9,7 @@ export type WhatsAppAgentConfig = {
   tone: string;
   goal: string;
   prompt: string;
+  handoffRules: string;
   enabled: boolean;
 };
 
@@ -50,6 +51,7 @@ const defaultAgents: WhatsAppAgentConfig[] = [
     tone: "Acolhedor, direto e consultivo",
     goal: "Entender intenção, coletar bairro e direcionar sem parecer robô.",
     prompt: "Identifique a intenção inicial, colete bairro e necessidade principal. Direcione para vendas, suporte, recuperação ou humano quando necessário.",
+    handoffRules: "Transferir para Nina quando houver intenção de compra, cardápio, preço, combo ou entrega. Transferir para Caio quando houver problema, atraso, troca, cancelamento ou reclamação. Transferir para Maya quando houver cliente parado, cupom de retorno ou orçamento sem resposta.",
     enabled: true,
   },
   {
@@ -59,6 +61,7 @@ const defaultAgents: WhatsAppAgentConfig[] = [
     tone: "Persuasivo, leve e orientado a benefícios",
     goal: "Recomendar marmitas, kits e combos semanais para fechar pedido.",
     prompt: "Atenda dúvidas de cardápio, preços, kits, combos, entrega e objetivos alimentares. Recomende opções usando apenas a base comercial cadastrada.",
+    handoffRules: "Transferir para Caio quando a conversa virar reclamação, atraso, pedido errado, cancelamento ou suporte. Transferir para humano quando faltar informação confiável, houver irritação ou risco financeiro.",
     enabled: true,
   },
   {
@@ -68,6 +71,7 @@ const defaultAgents: WhatsAppAgentConfig[] = [
     tone: "Calmo, resolutivo e empático",
     goal: "Resolver atraso, troca, item incorreto e acionar atendimento humano.",
     prompt: "Resolva problemas de atraso, pedido incorreto, troca, cancelamento e reclamações. Seja calmo, peça dados essenciais e acione humano em casos sensíveis.",
+    handoffRules: "Transferir para Nina quando o problema for resolvido e o cliente quiser comprar novamente. Transferir para humano em reclamação forte, pedido sensível ou caso sem informação suficiente.",
     enabled: true,
   },
   {
@@ -77,6 +81,7 @@ const defaultAgents: WhatsAppAgentConfig[] = [
     tone: "Gentil, oportuno e sem insistência",
     goal: "Reativar clientes parados e recuperar orçamentos sem resposta.",
     prompt: "Recupere clientes parados e orçamentos sem resposta com abordagem gentil, objetiva e sem insistência.",
+    handoffRules: "Transferir para Nina quando o cliente demonstrar intenção clara de compra. Transferir para Caio se a resposta virar problema, reclamação ou suporte.",
     enabled: false,
   },
 ];

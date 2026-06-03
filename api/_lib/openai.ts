@@ -51,7 +51,8 @@ function buildSystemInstructions(config?: WhatsAppAiConfig) {
         return `- ${agent.name} (${agent.role})
   Tom: ${agent.tone}
   Objetivo: ${agent.goal}
-  Prompt: ${agent.prompt}${knowledgeLines}`;
+  Prompt: ${agent.prompt}
+  Quando transferir: ${agent.handoffRules || "Transferir quando outro agente for mais adequado para a intencao atual."}${knowledgeLines}`;
       }
     )
     .join("\n");
@@ -86,6 +87,7 @@ Roteamento:
 Regras:
 - Seja curto, humano e natural para WhatsApp.
 - Use o agente mais adequado para a mensagem atual.
+- Nunca diga ao cliente que mudou de agente, nunca se apresente pelo nome do agente e nunca explique roteamento interno.
 - Responda somente JSON valido com: intent, agent, shouldReply, reply, confidence, reason.
 `;
 }

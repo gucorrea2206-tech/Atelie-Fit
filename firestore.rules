@@ -156,5 +156,9 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if false;
     }
+
+    match /whatsapp_ai_config/{configId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }
