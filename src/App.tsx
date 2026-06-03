@@ -247,11 +247,13 @@ type WhatsAppCampaignConfig = {
   objective: string;
   couponCode: string;
   couponDetails: string;
+  campaignKnowledge: string;
   initialMessage: string;
   randomizerEnabled: boolean;
   messageVariants: string[];
   triggerKeyword: string;
   flowReply: string;
+  responseRecognition: string;
   responseInstructions: string;
   handoffRules: string;
   flowSteps: WhatsAppFlowStep[];
@@ -261,6 +263,9 @@ type WhatsAppCampaignAssistantConfig = {
   name: string;
   tone: string;
   prompt: string;
+  knowledge: string;
+  responseRecognition: string;
+  defaultHandoffRules: string;
 };
 
 const defaultWhatsappAgents: WhatsAppAgentConfig[] = whatsappAgents.map(agent => ({
@@ -333,8 +338,11 @@ const defaultWhatsappAutomations: WhatsAppAutomationConfig[] = [
 
 const defaultWhatsappCampaignAssistant: WhatsAppCampaignAssistantConfig = {
   name: 'Clara',
-  tone: 'Criativo, comercial, direto e respeitoso',
-  prompt: 'Ajude a criar campanhas de WhatsApp para o Ateliê Fit. Sugira mensagens curtas, humanas e sem pressão, com gatilho claro de resposta e fluxo de continuidade. Não prometa desconto, prazo ou disponibilidade sem estar na base cadastrada.',
+  tone: 'Humano, curto, simpático e consultivo',
+  prompt: 'Você é o assistente de campanhas do Ateliê Fit. Quando uma pessoa responder uma campanha, identifique que aquela mensagem é uma resposta ao disparo, leia a campanha de origem, use a base da campanha e responda de forma útil. Se a pessoa quiser o cupom, envie o cupom e a regra. Se demonstrar intenção de compra, passe para o agente vendedor. Se virar problema, passe para suporte.',
+  knowledge: 'Use sempre a campanha de origem para entender contexto, cupom, regra, link de cardápio, público e objetivo. Não invente desconto, validade, preço, disponibilidade ou link que não estejam na base da campanha ou na base geral.',
+  responseRecognition: 'Toda resposta recebida após um disparo ativo deve ser tratada como resposta de campanha, mesmo que seja apenas "sim", "quero", "manda", emoji, áudio transcrito ou pergunta curta. Primeiro identifique a campanha de origem, depois a intenção.',
+  defaultHandoffRules: 'Passar para Nina quando houver intenção de compra, pedido de cardápio, preço, montagem de kit, entrega ou fechamento. Passar para Caio quando houver reclamação, atraso, erro, troca ou suporte.',
 };
 
 const createDefaultFlowSteps = (triggerKeyword: string, flowReply: string, agent = 'Maya'): WhatsAppFlowStep[] => [
@@ -370,6 +378,7 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     objective: 'Reativar clientes parados com uma oferta leve.',
     couponCode: 'ATELIE10',
     couponDetails: '10% de desconto para pedido fechado na semana da campanha.',
+    campaignKnowledge: 'Cupom ATELIE10 dá 10% de desconto. Enviar o cupom quando a pessoa demonstrar interesse. Se pedir opções, direcionar para kits e cardápio. Link do cardápio: inserir link oficial aqui.',
     initialMessage: 'Tenho um cupom disponível para você voltar essa semana. Quer que eu te mande?',
     randomizerEnabled: true,
     messageVariants: [
@@ -379,6 +388,7 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     ],
     triggerKeyword: 'sim, quero, manda, cupom, quero ver',
     flowReply: 'Perfeito. Me conta se você quer marmitas para quantos dias que eu te mando as melhores opções com o cupom aplicado.',
+    responseRecognition: 'Qualquer resposta recebida após esse disparo deve ser tratada como interesse ou dúvida sobre o cupom de retorno.',
     responseInstructions: 'Se a pessoa demonstrar interesse no cupom, envie o código e explique a regra de uso. Se perguntar por cardápio, preço ou kit, encaminhe para vendas.',
     handoffRules: 'Transferir para Nina quando houver intenção de compra, pedido de cardápio, escolha de kit, preço, taxa ou fechamento. Transferir para Caio se virar suporte, atraso ou reclamação.',
     flowSteps: createDefaultFlowSteps('sim, quero, manda, cupom, quero ver', 'Perfeito. Me conta se você quer marmitas para quantos dias que eu te mando as melhores opções com o cupom aplicado.', 'Maya'),
@@ -394,6 +404,7 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     objective: 'Gerar pedidos de kits semanais.',
     couponCode: '',
     couponDetails: 'Campanha sem cupom obrigatório; foco em resposta para receber opções.',
+    campaignKnowledge: 'Campanha para oferecer kits semanais. Se a pessoa responder positivamente, entender quantidade desejada e encaminhar para venda consultiva. Link do cardápio: inserir link oficial aqui.',
     initialMessage: 'Essa semana temos sugestões de kits práticos para deixar suas refeições prontas. Quer receber as opções?',
     randomizerEnabled: false,
     messageVariants: [
@@ -401,6 +412,7 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     ],
     triggerKeyword: 'sim, opções, quero, manda',
     flowReply: 'Claro. Você prefere um kit com 5 ou 10 marmitas? E tem alguma restrição alimentar?',
+    responseRecognition: 'Qualquer resposta recebida após esse disparo deve ser tratada como interesse em receber opções de kits ou tirar dúvida da campanha.',
     responseInstructions: 'Entender se a pessoa quer opções de kit, tirar uma dúvida simples e encaminhar para vendas quando houver intenção de compra.',
     handoffRules: 'Transferir para Nina quando houver interesse em montar pedido, escolher sabores, confirmar entrega ou preço. Transferir para Caio se houver reclamação ou problema.',
     flowSteps: createDefaultFlowSteps('sim, opções, quero, manda', 'Claro. Você prefere um kit com 5 ou 10 marmitas? E tem alguma restrição alimentar?', 'Nina'),
@@ -441,9 +453,11 @@ const normalizeWhatsappCampaign = (campaign: Partial<WhatsAppCampaignConfig>, fa
     handoffAgent: campaign.handoffAgent || base.handoffAgent || 'Nina',
     couponCode: campaign.couponCode || '',
     couponDetails: campaign.couponDetails || base.couponDetails || '',
+    campaignKnowledge: campaign.campaignKnowledge || base.campaignKnowledge || '',
     initialMessage,
     randomizerEnabled: Boolean(campaign.randomizerEnabled),
     messageVariants,
+    responseRecognition: campaign.responseRecognition || base.responseRecognition || '',
     responseInstructions: campaign.responseInstructions || base.responseInstructions || '',
     handoffRules: campaign.handoffRules || base.handoffRules || '',
     flowSteps,
@@ -513,9 +527,9 @@ const tabMeta: Record<AppTab, { label: string; title: string; description: strin
     description: 'Configure o que acontece quando alguém responde uma campanha.',
   },
   assistenteCampanhas: {
-    label: 'Assistente de escrita',
+    label: 'Assistente de campanhas',
     title: 'Assistente de campanhas',
-    description: 'Configure o apoio interno para escrever mensagens comerciais.',
+    description: 'Configure o agente que interpreta respostas de campanha e responde o cliente.',
   },
   whatsapp: {
     label: 'WhatsApp IA',
@@ -584,7 +598,7 @@ export default function App() {
   const [preview, setPreview] = useState<AIInterpretation | null>(null);
 
   // Deletion Confirmation State
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: 'product' | 'kit' | 'supplier' | 'shoppingProduct' | 'bill', name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: 'product' | 'kit' | 'supplier' | 'shoppingProduct' | 'bill' | 'campaign', name: string } | null>(null);
 
   // Shopping List State
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -949,11 +963,13 @@ export default function App() {
         objective: 'Definir objetivo comercial da campanha.',
         couponCode: '',
         couponDetails: 'Defina a condição, validade e regra de uso do cupom.',
+        campaignKnowledge: 'Informe aqui tudo que o assistente deve saber sobre essa campanha: cupom, validade, regra, link do cardápio, público, objeções e respostas importantes.',
         initialMessage: 'Tenho uma novidade para você. Quer que eu te mande?',
         randomizerEnabled: false,
         messageVariants: ['Tenho uma novidade para você. Quer que eu te mande?'],
         triggerKeyword: 'sim, quero, manda',
         flowReply: 'Perfeito. Vou te mandar as opções agora.',
+        responseRecognition: 'Qualquer resposta recebida depois desse disparo deve ser reconhecida como resposta desta campanha.',
         responseInstructions: 'Quando o cliente responder, entender a intenção e entregar a informação da campanha se fizer sentido.',
         handoffRules: 'Transferir para Nina quando o cliente quiser comprar, pedir cardápio, preço, kits ou entrega. Transferir para Caio em problemas ou suporte.',
         flowSteps: createDefaultFlowSteps('sim, quero, manda', 'Perfeito. Vou te mandar as opções agora.', 'Maya'),
@@ -1005,6 +1021,12 @@ export default function App() {
         };
       })
     );
+  };
+
+  const deleteWhatsappCampaign = (campaignId: string) => {
+    const campaign = whatsappCampaigns.find(campaign => campaign.id === campaignId);
+    if (!campaign) return;
+    setDeleteConfirm({ id: campaignId, type: 'campaign', name: campaign.name });
   };
 
   const handleWhatsappCampaignAssistantChange = (field: keyof WhatsAppCampaignAssistantConfig, value: string) => {
@@ -1295,7 +1317,24 @@ export default function App() {
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
     try {
-      if (deleteConfirm.type === 'product') {
+      if (deleteConfirm.type === 'campaign') {
+        const remainingCampaigns = whatsappCampaigns.filter(campaign => campaign.id !== deleteConfirm.id);
+        setWhatsappCampaigns(remainingCampaigns);
+        const updatedAt = new Date().toISOString();
+        await setDoc(doc(db, 'whatsapp_ai_config', 'main'), {
+          campaigns: remainingCampaigns,
+          updatedAt,
+        }, { merge: true });
+        setWhatsappAiSavedAt(updatedAt);
+        const nextCampaign = remainingCampaigns[0];
+        if (nextCampaign) {
+          setSelectedCampaignId(nextCampaign.id);
+          setSelectedFlowCampaignId(nextCampaign.id);
+          setEditingCampaignId(nextCampaign.status === 'Rascunho' ? nextCampaign.id : null);
+        } else {
+          setEditingCampaignId(null);
+        }
+      } else if (deleteConfirm.type === 'product') {
         await deleteDoc(doc(db, 'products', deleteConfirm.id));
       } else if (deleteConfirm.type === 'kit') {
         await deleteDoc(doc(db, 'kits', deleteConfirm.id));
@@ -3187,6 +3226,12 @@ export default function App() {
                         <h3 className="text-2xl font-black text-gray-900 mt-1">{selectedCampaign.name}</h3>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => deleteWhatsappCampaign(selectedCampaign.id)}
+                          className="px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-sm font-black hover:bg-red-100 transition-all"
+                        >
+                          Excluir
+                        </button>
                         {selectedCampaign.status !== 'Rascunho' && editingCampaignId !== selectedCampaign.id && (
                           <button
                             onClick={() => setEditingCampaignId(selectedCampaign.id)}
@@ -3253,6 +3298,16 @@ export default function App() {
                         <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Mensagem do disparo</p>
                       <textarea value={selectedCampaign.initialMessage} onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'initialMessage', event.target.value)} rows={4} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
                       </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Base de conhecimento da campanha</p>
+                        <textarea
+                          value={selectedCampaign.campaignKnowledge}
+                          onChange={(event) => handleWhatsappCampaignChange(selectedCampaign.id, 'campaignKnowledge', event.target.value)}
+                          rows={5}
+                          placeholder="Cupom, validade, regra de uso, link do cardápio, público, objeções e informações que o assistente deve usar."
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                        />
+                      </div>
                       <div className="flex flex-col sm:flex-row gap-3">
                         <button onClick={() => setEditingCampaignId(null)} className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black hover:bg-gray-200 transition-all">
                           <FileText size={17} />
@@ -3281,6 +3336,10 @@ export default function App() {
                         <div className="p-5 bg-gray-50 rounded-2xl">
                           <p className="text-[10px] font-black uppercase text-gray-400">Mensagem</p>
                           <p className="text-sm text-gray-700 mt-2">{selectedCampaign.initialMessage}</p>
+                        </div>
+                        <div className="p-5 bg-gray-50 rounded-2xl">
+                          <p className="text-[10px] font-black uppercase text-gray-400">Base da campanha</p>
+                          <p className="text-sm text-gray-700 mt-2 whitespace-pre-line">{selectedCampaign.campaignKnowledge || 'Nenhuma base específica cadastrada.'}</p>
                         </div>
                         <p className="text-xs text-gray-500">Campanhas finalizadas são disparadas e continuadas pela aba Fluxos.</p>
                       </div>
@@ -3404,6 +3463,15 @@ export default function App() {
                         </div>
                       </div>
                       <div>
+                        <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Como reconhecer resposta desta campanha</p>
+                        <textarea
+                          value={selectedFlowCampaign.responseRecognition}
+                          onChange={(event) => handleWhatsappCampaignChange(selectedFlowCampaign.id, 'responseRecognition', event.target.value)}
+                          rows={4}
+                          className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                        />
+                      </div>
+                      <div>
                         <p className="text-[10px] font-black uppercase text-gray-400 mb-1">O que o agente deve fazer quando alguém responder</p>
                         <textarea
                           value={selectedFlowCampaign.responseInstructions}
@@ -3449,6 +3517,16 @@ export default function App() {
                             />
                           </div>
                         </div>
+                      </div>
+                      <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                        <h3 className="text-lg font-black text-gray-900">Base da campanha para o assistente</h3>
+                        <p className="text-sm text-gray-500 mt-1">Essa base é usada junto com a base geral do assistente de campanhas.</p>
+                        <textarea
+                          value={selectedFlowCampaign.campaignKnowledge}
+                          onChange={(event) => handleWhatsappCampaignChange(selectedFlowCampaign.id, 'campaignKnowledge', event.target.value)}
+                          rows={6}
+                          className="mt-4 w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                        />
                       </div>
 
                   {selectedFlowCampaign && (
@@ -3508,25 +3586,58 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm max-w-4xl space-y-4"
+              className="space-y-5"
             >
-              <h2 className="text-2xl font-black text-gray-900">Assistente de escrita</h2>
-              <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome</p>
-                <input value={whatsappCampaignAssistant.name} onChange={(event) => handleWhatsappCampaignAssistantChange('name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900">Assistente de campanhas</h2>
+                  <p className="text-sm text-gray-500 mt-1">Agente responsável por interpretar respostas das campanhas e responder antes de transferir.</p>
+                </div>
+                <button onClick={handleSaveWhatsappAiConfig} disabled={isSavingWhatsappAi} className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60">
+                  {isSavingWhatsappAi ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                  Salvar assistente
+                </button>
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Tom de escrita</p>
-                <input value={whatsappCampaignAssistant.tone} onChange={(event) => handleWhatsappCampaignAssistantChange('tone', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+
+              <div className="grid grid-cols-1 xl:grid-cols-[0.8fr_1.2fr] gap-4">
+                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                  <h3 className="text-lg font-black text-gray-900">Identidade do agente</h3>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome</p>
+                    <input value={whatsappCampaignAssistant.name} onChange={(event) => handleWhatsappCampaignAssistantChange('name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Tom de atendimento</p>
+                    <input value={whatsappCampaignAssistant.tone} onChange={(event) => handleWhatsappCampaignAssistantChange('tone', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <p className="text-[10px] font-black uppercase text-emerald-700">Como ele entra na conversa</p>
+                    <p className="text-sm text-emerald-800 mt-2">Quando houver resposta a uma campanha, ele usa a campanha de origem, a base específica e a base geral abaixo para decidir a melhor resposta.</p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4">
+                  <h3 className="text-lg font-black text-gray-900">Regras de inteligência</h3>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Como reconhecer resposta de campanha</p>
+                    <textarea value={whatsappCampaignAssistant.responseRecognition} onChange={(event) => handleWhatsappCampaignAssistantChange('responseRecognition', event.target.value)} rows={4} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Prompt principal</p>
+                    <textarea value={whatsappCampaignAssistant.prompt} onChange={(event) => handleWhatsappCampaignAssistantChange('prompt', event.target.value)} rows={6} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Regras padrão de passagem</p>
+                    <textarea value={whatsappCampaignAssistant.defaultHandoffRules} onChange={(event) => handleWhatsappCampaignAssistantChange('defaultHandoffRules', event.target.value)} rows={4} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Treinamento</p>
-                <textarea value={whatsappCampaignAssistant.prompt} onChange={(event) => handleWhatsappCampaignAssistantChange('prompt', event.target.value)} rows={10} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
+
+              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                <h3 className="text-lg font-black text-gray-900">Base de conhecimento geral do assistente</h3>
+                <p className="text-sm text-gray-500 mt-1">Essa base vale para todas as campanhas. A base específica de cada campanha complementa estas instruções.</p>
+                <textarea value={whatsappCampaignAssistant.knowledge} onChange={(event) => handleWhatsappCampaignAssistantChange('knowledge', event.target.value)} rows={8} className="mt-4 w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-700 border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none resize-none" />
               </div>
-              <button onClick={handleSaveWhatsappAiConfig} disabled={isSavingWhatsappAi} className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60">
-                {isSavingWhatsappAi ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
-                Salvar configuração
-              </button>
             </motion.div>
           )}
 
