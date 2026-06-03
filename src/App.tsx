@@ -435,10 +435,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({
-    dashboard: true,
-    gestao: true,
-    marketing: true,
-    whatsapp: true,
+    dashboard: false,
+    gestao: false,
+    marketing: false,
+    whatsapp: false,
   });
   
   const [products, setProducts] = useState<Product[]>([]);
@@ -1295,10 +1295,10 @@ export default function App() {
     <button
       key={tab}
       onClick={() => selectTab(tab)}
-      className={`nav-item flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all whitespace-nowrap md:whitespace-normal w-full ${
+      className={`nav-subitem flex items-center gap-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap md:whitespace-normal w-full ${
         activeTab === tab
-          ? 'is-active bg-emerald-600 text-white shadow-lg shadow-emerald-100'
-          : 'text-gray-500 hover:bg-gray-50'
+          ? 'is-active'
+          : 'text-gray-500 hover:text-gray-800 hover:bg-white/60'
       }`}
     >
       {getTabIcon(tab)}
@@ -1326,8 +1326,8 @@ export default function App() {
       <div className="nav-group">
         <button
           onClick={() => setOpenNavGroups(current => ({ ...current, [id]: !current[id] }))}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-black transition-all ${
-            isActive ? 'text-gray-900 bg-gray-50' : 'text-gray-500 hover:bg-gray-50'
+          className={`nav-group-button w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-black transition-all ${
+            isActive ? 'is-active text-gray-900 bg-white' : 'text-gray-500 hover:bg-white/70'
           }`}
         >
           <Icon size={18} />
@@ -1335,7 +1335,7 @@ export default function App() {
           <ChevronDown size={15} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
         {isOpen && (
-          <div className="mt-2 space-y-1">
+          <div className="nav-sublist mt-2 space-y-1">
             {tabs.map(renderNavButton)}
             {children}
           </div>
@@ -1397,10 +1397,10 @@ export default function App() {
                   selectTab('whatsapp');
                   setWhatsappEnvironment(subTab.id);
                 }}
-                className={`w-full flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+                className={`nav-subitem w-full flex items-center gap-2 rounded-xl text-xs font-bold transition-all ${
                   activeTab === 'whatsapp' && whatsappEnvironment === subTab.id
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-gray-500 hover:bg-gray-50'
+                    ? 'is-active'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-white/60'
                 }`}
               >
                 <subTab.icon size={15} />
