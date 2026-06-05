@@ -58,6 +58,7 @@ function buildSystemInstructions(config?: WhatsAppAiConfig) {
     .join("\n");
 
   const knowledge = config.knowledge;
+  const campaignAssistant = config.campaignAssistant;
 
   return `
 Voce atende clientes do ${config.businessName || "Atelie Fit"} pelo WhatsApp.
@@ -76,6 +77,22 @@ Promocoes: ${knowledge.promotions || "Nao oferecer promocao sem confirmacao."}
 Entrega: ${knowledge.delivery || "Coletar bairro antes de prometer prazo ou taxa."}
 Politicas: ${knowledge.policies || "Encaminhar casos sensiveis para humano."}
 Recuperacao: ${knowledge.recovery || "Nao insistir se o cliente recusar."}
+
+Assistente de campanhas:
+Nome interno: ${campaignAssistant.name}
+Tom: ${campaignAssistant.tone}
+Prompt: ${campaignAssistant.prompt}
+Base geral: ${campaignAssistant.knowledge}
+Como reconhecer resposta de campanha: ${campaignAssistant.responseRecognition}
+Regras padrao de passagem: ${campaignAssistant.defaultHandoffRules}
+
+Quando o contexto enviado pelo sistema tiver campaignContext:
+- Trate a mensagem como resposta da campanha indicada em campaignContext, mesmo se o cliente responder apenas "sim", "quero", "manda", emoji ou uma pergunta curta.
+- Use campaignContext.campaign.campaignKnowledge, couponCode, couponDetails, initialMessage, responseRecognition, responseInstructions e handoffRules como fonte principal.
+- Se o cliente quiser o cupom, envie o cupom e a regra de uso sem pedir para ele repetir.
+- Se o cliente demonstrar compra, cardapio, preco, kits, entrega ou fechamento, use o agente de passagem indicado pela campanha.
+- Se virar problema, atraso, reclamacao, troca ou cancelamento, use suporte.
+- Nunca diga ao cliente que voce detectou uma campanha ou que houve troca de agente.
 
 Roteamento:
 - Lia faz triagem inicial e identifica intencao.
@@ -135,8 +152,41 @@ export async function decideAgentReply(message: string, context: Record<string, 
   const apiKey = requireEnv("OPENAI_API_KEY");
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
   const aiConfig = context.aiConfig as WhatsAppAiConfig | undefined;
+  const campaignContext = context.campaignContext as any;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
+
+  if (campaignContext?.campaign) {
+    const lowerMessage = message.toLowerCase();
+    const isSupport = ["atras", "erro", "problema", "reclama", "cancel", "troca", "pedido errado"].some((term) =>
+      lowerMessage.includes(term)
+    );
+    const isBuying = ["cardapio", "cardápio", "preco", "preço", "valor", "kit", "marmita", "comprar", "pedido", "entrega"].some((term) =>
+      lowerMessage.includes(term)
+    );
+
+    if (isSupport) {
+      return {
+        intent: "suporte",
+        agent: "Caio",
+        shouldReply: true,
+        reply: "Sinto muito por isso. Me passa, por favor, seu nome e o que aconteceu para eu te ajudar agora.",
+        confidence: 0.7,
+        reason: "fallback_campaign_support",
+      };
+    }
+
+    if (!isBuying && campaignContext.campaign.couponCode) {
+      return {
+        intent: "recuperacao",
+        agent: campaignContext.campaign.campaignAgent || "Maya",
+        shouldReply: true,
+        reply: `Claro. O cupom é ${campaignContext.campaign.couponCode}. ${campaignContext.campaign.couponDetails || "Me chama aqui que eu te ajudo a usar."}`,
+        confidence: 0.72,
+        reason: "fallback_campaign_coupon",
+      };
+    }
+  }
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {

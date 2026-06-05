@@ -31,6 +31,8 @@ export type WhatsAppAiConfig = {
   knowledge: WhatsAppKnowledgeConfig;
   agentKnowledge: Partial<Record<AgentName, WhatsAppKnowledgeConfig>>;
   automations: WhatsAppAutomationConfig[];
+  campaigns: WhatsAppCampaignConfig[];
+  campaignAssistant: WhatsAppCampaignAssistantConfig;
 };
 
 export type WhatsAppAutomationConfig = {
@@ -41,6 +43,37 @@ export type WhatsAppAutomationConfig = {
   triggerDays?: number;
   agent: AgentName;
   message: string;
+};
+
+export type WhatsAppCampaignConfig = {
+  id: string;
+  name: string;
+  status: "Rascunho" | "Finalizada" | "Pausada";
+  audience: string;
+  agent: AgentName;
+  campaignAgent: AgentName;
+  handoffAgent: AgentName;
+  objective: string;
+  couponCode: string;
+  couponDetails: string;
+  campaignKnowledge: string;
+  initialMessage: string;
+  randomizerEnabled: boolean;
+  messageVariants: string[];
+  triggerKeyword: string;
+  flowReply: string;
+  responseRecognition: string;
+  responseInstructions: string;
+  handoffRules: string;
+};
+
+export type WhatsAppCampaignAssistantConfig = {
+  name: string;
+  tone: string;
+  prompt: string;
+  knowledge: string;
+  responseRecognition: string;
+  defaultHandoffRules: string;
 };
 
 const defaultAgents: WhatsAppAgentConfig[] = [
@@ -152,6 +185,15 @@ const defaultAutomations: WhatsAppAutomationConfig[] = [
   },
 ];
 
+const defaultCampaignAssistant: WhatsAppCampaignAssistantConfig = {
+  name: "Clara",
+  tone: "Humano, curto, simpatico e consultivo",
+  prompt: "Voce e o assistente de campanhas do Atelie Fit. Quando uma pessoa responder uma campanha, identifique a campanha de origem, use a base da campanha e responda de forma util. Se quiser o cupom, envie o cupom e a regra. Se quiser comprar, transfira para vendas. Se virar problema, transfira para suporte.",
+  knowledge: "Use sempre o contexto da campanha de origem. Nao invente desconto, validade, preco, disponibilidade ou link que nao estejam na base da campanha ou na base geral.",
+  responseRecognition: "Toda resposta recebida apos um disparo ativo deve ser tratada como resposta de campanha, mesmo que seja apenas sim, quero, manda, emoji, audio transcrito ou pergunta curta.",
+  defaultHandoffRules: "Passar para Nina quando houver intencao de compra, pedido de cardapio, preco, montagem de kit, entrega ou fechamento. Passar para Caio quando houver reclamacao, atraso, erro, troca ou suporte.",
+};
+
 export const defaultWhatsappAiConfig: WhatsAppAiConfig = {
   active: true,
   businessName: "Ateliê Fit",
@@ -161,6 +203,8 @@ export const defaultWhatsappAiConfig: WhatsAppAiConfig = {
   knowledge: defaultKnowledge,
   agentKnowledge: defaultAgentKnowledge,
   automations: defaultAutomations,
+  campaigns: [],
+  campaignAssistant: defaultCampaignAssistant,
 };
 
 export async function getWhatsappAiConfig(): Promise<WhatsAppAiConfig> {
@@ -194,5 +238,10 @@ export async function getWhatsappAiConfig(): Promise<WhatsAppAiConfig> {
         ? data.automations.find((automation: WhatsAppAutomationConfig) => automation.id === defaultAutomation.id) || {}
         : {}),
     })),
+    campaigns: Array.isArray(data.campaigns) ? data.campaigns : [],
+    campaignAssistant: {
+      ...defaultCampaignAssistant,
+      ...(data.campaignAssistant || {}),
+    },
   };
 }

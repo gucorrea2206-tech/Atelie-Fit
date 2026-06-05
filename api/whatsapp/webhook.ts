@@ -4,6 +4,7 @@ import { optionalEnv } from "../_lib/env.js";
 import { decideAgentReply } from "../_lib/openai.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
+import { getActiveCampaignContext, markCampaignContextResponded } from "../_lib/campaignContext.js";
 
 export const config = {
   maxDuration: 60,
@@ -50,12 +51,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = getAdminDb();
     const conversationRef = db.collection("whatsapp_conversations").doc(normalized.remoteJid);
     const messageRef = conversationRef.collection("messages").doc(normalized.messageId || `${Date.now()}`);
+    const activeCampaignContext = await getActiveCampaignContext(db, normalized.remoteJid);
+
+    if (activeCampaignContext) {
+      await markCampaignContextResponded(db, activeCampaignContext, normalized.text);
+    }
 
     await conversationRef.set(
       {
         remoteJid: normalized.remoteJid,
         pushName: normalized.pushName,
         lastMessage: normalized.text,
+        campaignId: activeCampaignContext?.campaignId || "",
+        campaignName: activeCampaignContext?.campaignName || "",
+        activeCampaignContext: activeCampaignContext || null,
         updatedAt: new Date().toISOString(),
         status: "ai",
       },
@@ -66,6 +75,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       direction: "inbound",
       text: normalized.text,
       payload: normalized.raw,
+      campaignId: activeCampaignContext?.campaignId || "",
+      campaignName: activeCampaignContext?.campaignName || "",
       createdAt: new Date().toISOString(),
     });
 
@@ -74,6 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       remoteJid: normalized.remoteJid,
       pushName: normalized.pushName,
       aiConfig,
+      campaignContext: activeCampaignContext,
+      isCampaignResponse: Boolean(activeCampaignContext),
     });
 
     await conversationRef.set(
@@ -107,6 +120,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         agent: decision.agent,
         sendStatus,
         sendError,
+        campaignId: activeCampaignContext?.campaignId || "",
+        campaignName: activeCampaignContext?.campaignName || "",
         createdAt: new Date().toISOString(),
       });
     }
