@@ -12,6 +12,12 @@ type PromokitLineItem = {
   raw: any;
 };
 
+type PromokitSelectedProduct = {
+  name: string;
+  quantity: number;
+  raw: any;
+};
+
 type ProcessOrderResult = {
   code: string;
   saleId: string | null;
@@ -77,6 +83,83 @@ function extractLineItems(order: any): PromokitLineItem[] {
       };
     })
     .filter((item) => item.name);
+}
+
+function readName(value: any) {
+  if (!value || typeof value !== "object") return "";
+  return String(
+    value?.nome ||
+      value?.name ||
+      value?.titulo ||
+      value?.title ||
+      value?.descricao ||
+      value?.description ||
+      value?.produto?.nome ||
+      value?.item?.nome ||
+      ""
+  ).trim();
+}
+
+function readQuantity(value: any) {
+  const quantity = Number(value?.qtde || value?.quantidade || value?.quantity || value?.qtd || 1);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+}
+
+function collectNestedSelectedProducts(value: any, parentName: string, found: PromokitSelectedProduct[] = []) {
+  if (!value || typeof value !== "object") return found;
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectNestedSelectedProducts(entry, parentName, found));
+    return found;
+  }
+
+  const name = readName(value);
+  const normalizedName = normalizeText(name);
+  const normalizedParent = normalizeText(parentName);
+  const hasNestedProductShape = Boolean(
+    name &&
+      normalizedName !== normalizedParent &&
+      (value?.produto || value?.item || value?.produtoId || value?.idProduto || value?.codigoPdv || value?.codigoPDV)
+  );
+
+  if (hasNestedProductShape) {
+    found.push({
+      name,
+      quantity: readQuantity(value),
+      raw: value,
+    });
+  }
+
+  Object.entries(value).forEach(([key, entry]) => {
+    if (["produto", "item"].includes(key) && name) return;
+    if (entry && typeof entry === "object") collectNestedSelectedProducts(entry, parentName, found);
+  });
+
+  return found;
+}
+
+async function findProductsSelectedInsideKit(lineItem: PromokitLineItem) {
+  const db = getAdminDb();
+  const productsSnapshot = await db.collection("products").get();
+  const selectedProducts = collectNestedSelectedProducts(lineItem.raw, lineItem.name);
+  const matched: { productId: string; quantity: number; name: string }[] = [];
+
+  selectedProducts.forEach((selected) => {
+    const selectedName = normalizeText(selected.name);
+    if (!selectedName) return;
+    const productDoc = productsSnapshot.docs.find((doc) => {
+      const productName = normalizeText(String(doc.data().name || ""));
+      return productName === selectedName || productName.includes(selectedName) || selectedName.includes(productName);
+    });
+    if (!productDoc) return;
+    matched.push({
+      productId: productDoc.ref.id,
+      quantity: selected.quantity,
+      name: selected.name,
+    });
+  });
+
+  return matched;
 }
 
 async function findProduct(lineItem: PromokitLineItem) {
@@ -215,6 +298,7 @@ export async function processPromokitOrder(order: any): Promise<ProcessOrderResu
       const kitData = kitDoc.data();
       const kitItems = Array.isArray(kitData.items) ? kitData.items : [];
       const promokitCatalogId = lineItem.promokitProductId || lineItem.pdvCode || normalizeText(lineItem.name);
+      const selectedProducts = await findProductsSelectedInsideKit(lineItem);
 
       await db.collection("promokit_products").doc(promokitCatalogId).set(
         {
@@ -245,25 +329,51 @@ export async function processPromokitOrder(order: any): Promise<ProcessOrderResu
       );
       syncedProductCount += 1;
 
-      for (const kitItem of kitItems) {
-        const quantity = Number(kitItem.quantity || 0) * lineItem.quantity;
-        if (!kitItem.productId || quantity <= 0) continue;
+      if (selectedProducts.length > 0) {
+        for (const selectedProduct of selectedProducts) {
+          const quantity = selectedProduct.quantity * lineItem.quantity;
+          if (!selectedProduct.productId || quantity <= 0) continue;
 
-        const movementRef = db.collection("movements").doc();
-        batch.set(movementRef, {
-          productId: kitItem.productId,
-          type: "saida",
-          quantity,
-          referenceDate: saleDate,
-          createdAt: FieldValue.serverTimestamp(),
-          saleId: saleRef.id,
-          source: "promokit",
-          promokitOrderCode: code,
-          promokitItemId: lineItem.promokitItemId || null,
-          promokitProductId: lineItem.promokitProductId || null,
-        });
-        movementCount += 1;
-        totalQuantity += quantity;
+          const movementRef = db.collection("movements").doc();
+          batch.set(movementRef, {
+            productId: selectedProduct.productId,
+            type: "saida",
+            quantity,
+            referenceDate: saleDate,
+            createdAt: FieldValue.serverTimestamp(),
+            saleId: saleRef.id,
+            source: "promokit",
+            recognitionSource: "promokit_kit_selection",
+            promokitOrderCode: code,
+            promokitItemId: lineItem.promokitItemId || null,
+            promokitProductId: lineItem.promokitProductId || null,
+            promokitSelectedName: selectedProduct.name,
+          });
+          movementCount += 1;
+          totalQuantity += quantity;
+        }
+      } else {
+        for (const kitItem of kitItems) {
+          const quantity = Number(kitItem.quantity || 0) * lineItem.quantity;
+          if (!kitItem.productId || quantity <= 0) continue;
+
+          const movementRef = db.collection("movements").doc();
+          batch.set(movementRef, {
+            productId: kitItem.productId,
+            type: "saida",
+            quantity,
+            referenceDate: saleDate,
+            createdAt: FieldValue.serverTimestamp(),
+            saleId: saleRef.id,
+            source: "promokit",
+            recognitionSource: "local_kit_composition",
+            promokitOrderCode: code,
+            promokitItemId: lineItem.promokitItemId || null,
+            promokitProductId: lineItem.promokitProductId || null,
+          });
+          movementCount += 1;
+          totalQuantity += quantity;
+        }
       }
       continue;
     }

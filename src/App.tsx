@@ -590,7 +590,7 @@ export default function App() {
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
-  const [vendasSubTab, setVendasSubTab] = useState<'promokit' | 'registros'>('promokit');
+  const [vendasSubTab, setVendasSubTab] = useState<'promokit' | 'registros'>('registros');
   const [shoppingSubTab, setShoppingSubTab] = useState<'produtos' | 'fornecedores' | 'lista'>('lista');
   const [billsSubTab, setBillsSubTab] = useState<'lista' | 'pagas' | 'cadastrar'>('lista');
   const [inputText, setInputText] = useState('');
@@ -2078,7 +2078,7 @@ export default function App() {
               className="space-y-6"
             >
               <div className="flex p-1 bg-gray-100 rounded-2xl w-full max-w-2xl mx-auto">
-                {(['promokit', 'registros'] as const).map((sub) => (
+                {(['registros', 'promokit'] as const).map((sub) => (
                   <button
                     key={sub}
                     onClick={() => setVendasSubTab(sub)}
@@ -2088,7 +2088,7 @@ export default function App() {
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    {sub === 'promokit' ? 'Promokit' : 'Registros de Vendas'}
+                    {sub === 'promokit' ? 'Sincronização Promokit' : 'Últimos Pedidos'}
                   </button>
                 ))}
               </div>
@@ -2109,8 +2109,8 @@ export default function App() {
                             <RefreshCcw size={20} />
                           </div>
                           <div>
-                            <h2 className="text-lg font-bold text-gray-900">Vendas automáticas da Promokit</h2>
-                            <p className="text-sm text-gray-500">Pedidos novos viram venda e baixam o estoque pelo produto sincronizado.</p>
+                            <h2 className="text-lg font-bold text-gray-900">Sincronização Promokit</h2>
+                            <p className="text-sm text-gray-500">Pedidos novos viram venda e baixam o estoque pelos itens enviados no pedido.</p>
                           </div>
                         </div>
                         <button
@@ -2132,11 +2132,11 @@ export default function App() {
                           <p className="text-xs text-gray-500 mt-1">já lançados em vendas</p>
                         </div>
                         <div className="bg-gray-50 p-4 rounded-2xl">
-                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Produtos conectados</p>
+                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Baixa de estoque</p>
                           <p className="text-2xl font-black text-emerald-600">
-                            {products.filter(product => product.promokitProductId || product.promokitPdvCode).length + kits.filter(kit => kit.promokitProductId || kit.promokitPdvCode).length}
+                            IA
                           </p>
-                          <p className="text-xs text-gray-500 mt-1">com vínculo Promokit</p>
+                          <p className="text-xs text-gray-500 mt-1">kits usam marmitas do pedido</p>
                         </div>
                         <div className="bg-gray-50 p-4 rounded-2xl">
                           <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último código</p>
@@ -2171,38 +2171,11 @@ export default function App() {
                     </div>
 
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4">Cardápio sincronizado</h3>
-                      <div className="space-y-3">
-                        {products.filter(product => product.promokitProductId || product.promokitPdvCode).slice(0, 8).map(product => (
-                          <div key={product.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-2xl">
-                            <div>
-                              <p className="font-bold text-gray-900 capitalize">{product.name}</p>
-                              <p className="text-xs text-gray-400">
-                                Promokit {product.promokitProductId || product.promokitPdvCode} · Estoque {stock.find(item => item.id === product.id)?.currentStock || 0} un
-                              </p>
-                            </div>
-                            <span className="text-sm font-black text-emerald-600">
-                              R$ {(product.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                        ))}
-                        {kits.filter(kit => kit.promokitProductId || kit.promokitPdvCode).slice(0, 4).map(kit => (
-                          <div key={kit.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-2xl">
-                            <div>
-                              <p className="font-bold text-gray-900 capitalize">{kit.name}</p>
-                              <p className="text-xs text-gray-400">
-                                Kit Promokit {kit.promokitProductId || kit.promokitPdvCode} · baixa {kit.items.length} item(ns) do estoque
-                              </p>
-                            </div>
-                            <span className="text-sm font-black text-emerald-600">
-                              R$ {(kit.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                        ))}
-                        {products.filter(product => product.promokitProductId || product.promokitPdvCode).length === 0 && kits.filter(kit => kit.promokitProductId || kit.promokitPdvCode).length === 0 && (
-                          <p className="text-sm text-gray-500 text-center py-6">Nenhum produto da Promokit sincronizado ainda.</p>
-                        )}
-                      </div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">Como a baixa funciona</h3>
+                      <p className="text-sm text-gray-500">
+                        Quando o pedido vier como kit, o sistema procura as marmitas escolhidas dentro do próprio pedido da Promokit.
+                        Se encontrar, baixa essas marmitas no estoque. Se não encontrar, usa a composição do kit cadastrada no cardápio.
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -2215,7 +2188,20 @@ export default function App() {
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-4"
                   >
-                    <h2 className="text-xl font-bold text-gray-900 mb-4">Vendas Realizadas</h2>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Últimos pedidos</h2>
+                        <p className="text-sm text-gray-500">Pedido mais recente sempre no topo.</p>
+                      </div>
+                      <button
+                        disabled={isSyncingPromokit}
+                        onClick={() => handleSyncPromokitOrders()}
+                        className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 transition-all disabled:opacity-50"
+                      >
+                        {isSyncingPromokit ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
+                        Buscar novos pedidos
+                      </button>
+                    </div>
                     {sales.length === 0 ? (
                       <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-200">
                         <DollarSign className="mx-auto text-gray-300 mb-4" size={48} />
