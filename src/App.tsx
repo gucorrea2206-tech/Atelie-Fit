@@ -590,7 +590,6 @@ export default function App() {
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
-  const [vendasSubTab, setVendasSubTab] = useState<'promokit' | 'registros'>('registros');
   const [shoppingSubTab, setShoppingSubTab] = useState<'produtos' | 'fornecedores' | 'lista'>('lista');
   const [billsSubTab, setBillsSubTab] = useState<'lista' | 'pagas' | 'cadastrar'>('lista');
   const [inputText, setInputText] = useState('');
@@ -1254,7 +1253,6 @@ export default function App() {
       setPreview(null);
       setInputText('');
       setActiveTab('vendas');
-      setVendasSubTab('registros');
     } catch (err: any) {
       setError(err.message || "Erro ao salvar movimentações.");
     } finally {
@@ -1686,21 +1684,7 @@ export default function App() {
       <main className={`workspace-main flex-1 w-full ${activeTab === 'whatsapp' && whatsappEnvironment === 'atendimento' ? 'p-3 md:p-5 max-w-none' : 'p-5 md:p-8 lg:p-10 max-w-[1500px] mx-auto'}`}>
         {!(activeTab === 'whatsapp' && whatsappEnvironment === 'atendimento') && (
         <header className="workspace-header mb-8">
-          <div>
-            <p className="text-xs font-black uppercase text-emerald-700 tracking-wider">Workspace Ateliê Fit</p>
-            <h1 className="text-3xl md:text-4xl font-black text-gray-900 mt-1">{currentTabMeta.title}</h1>
-            <p className="text-sm md:text-base text-gray-500 mt-2 max-w-2xl">{currentTabMeta.description}</p>
-          </div>
-          <div className="header-actions">
-            <div className="header-pill">
-              <Calendar size={16} />
-              <span>{format(new Date(), "dd 'de' MMMM", { locale: ptBR })}</span>
-            </div>
-            <div className="header-pill is-strong">
-              <Activity size={16} />
-              <span>{stock.reduce((acc, item) => acc + item.currentStock, 0)} un em estoque</span>
-            </div>
-          </div>
+          <h1 className="text-3xl md:text-4xl font-black text-gray-900">{currentTabMeta.title}</h1>
         </header>
         )}
 
@@ -2077,200 +2061,153 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-6"
             >
-              <div className="flex p-1 bg-gray-100 rounded-2xl w-full max-w-2xl mx-auto">
-                {(['registros', 'promokit'] as const).map((sub) => (
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
+                      <RefreshCcw size={20} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-gray-900">Sincronização Promokit</h2>
+                      <p className="text-sm text-gray-500">Pedidos novos viram venda e baixam o estoque pelos itens enviados no pedido.</p>
+                    </div>
+                  </div>
                   <button
-                    key={sub}
-                    onClick={() => setVendasSubTab(sub)}
-                    className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${
-                      vendasSubTab === sub 
-                        ? 'bg-white text-emerald-600 shadow-sm' 
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
+                    disabled={isSyncingPromokit}
+                    onClick={() => handleSyncPromokitOrders()}
+                    className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 transition-all disabled:opacity-50"
                   >
-                    {sub === 'promokit' ? 'Sincronização Promokit' : 'Últimos Pedidos'}
+                    {isSyncingPromokit ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
+                    Buscar novos pedidos
                   </button>
-                ))}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                  <div className="bg-gray-50 p-4 rounded-2xl">
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">Pedidos Promokit</p>
+                    <p className="text-2xl font-black text-gray-900">
+                      {sales.filter(sale => sale.source === 'promokit').length}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">já lançados em vendas</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-2xl">
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">Baixa de estoque</p>
+                    <p className="text-2xl font-black text-emerald-600">IA</p>
+                    <p className="text-xs text-gray-500 mt-1">kits usam marmitas do pedido</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-2xl">
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último código</p>
+                    <input 
+                      type="text"
+                      value={promokitLastOrderCode}
+                      onChange={(e) => setPromokitLastOrderCode(e.target.value)}
+                      placeholder="Automático"
+                      className="w-full mt-2 p-3 bg-white rounded-xl border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                    />
+                  </div>
+                </div>
+
+                {promokitSyncResult && (
+                  <div className="mt-5 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                    <div className="flex items-center gap-2 text-emerald-800 font-bold mb-2">
+                      <CheckCircle2 size={18} />
+                      Sincronização concluída
+                    </div>
+                    <p className="text-sm text-emerald-700">
+                      {promokitSyncResult.count} pedido(s) lido(s). Próximo código: {promokitSyncResult.nextLastOrderCode}.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {promokitSyncResult.processedSales.map(item => (
+                        <span key={item.code} className="text-xs bg-white text-emerald-700 border border-emerald-100 px-3 py-1 rounded-lg font-bold">
+                          #{item.code} {item.createdSale ? 'lançado' : 'já existia'} · {item.movementCount} baixa(s)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <AnimatePresence mode="wait">
-                {vendasSubTab === 'promokit' && (
-                  <motion.div 
-                    key="promokit-venda"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="space-y-6"
-                  >
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
-                            <RefreshCcw size={20} />
-                          </div>
-                          <div>
-                            <h2 className="text-lg font-bold text-gray-900">Sincronização Promokit</h2>
-                            <p className="text-sm text-gray-500">Pedidos novos viram venda e baixam o estoque pelos itens enviados no pedido.</p>
-                          </div>
-                        </div>
-                        <button
-                          disabled={isSyncingPromokit}
-                          onClick={() => handleSyncPromokitOrders()}
-                          className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 transition-all disabled:opacity-50"
-                        >
-                          {isSyncingPromokit ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
-                          Sincronizar agora
-                        </button>
+              <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Como a baixa funciona</h3>
+                <p className="text-sm text-gray-500">
+                  Quando o pedido vier como kit, o sistema procura as marmitas escolhidas dentro do próprio pedido da Promokit.
+                  Se encontrar, baixa essas marmitas no estoque. Se não encontrar, usa a composição do kit cadastrada no cardápio.
+                </p>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Últimos pedidos</h2>
+                  <p className="text-sm text-gray-500">Pedido mais recente sempre no topo.</p>
+                </div>
+              </div>
+
+              {sales.length === 0 ? (
+                <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-200">
+                  <DollarSign className="mx-auto text-gray-300 mb-4" size={48} />
+                  <p className="text-gray-500">Nenhuma venda registrada.</p>
+                </div>
+              ) : (
+                sales.map(sale => (
+                  <div key={sale.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                        <UserPlus size={24} />
                       </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-gray-50 p-4 rounded-2xl">
-                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Pedidos Promokit</p>
-                          <p className="text-2xl font-black text-gray-900">
-                            {sales.filter(sale => sale.source === 'promokit').length}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">já lançados em vendas</p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-2xl">
-                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Baixa de estoque</p>
-                          <p className="text-2xl font-black text-emerald-600">
-                            IA
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">kits usam marmitas do pedido</p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-2xl">
-                          <p className="text-xs font-bold text-gray-400 uppercase mb-1">Último código</p>
-                          <input 
-                            type="text"
-                            value={promokitLastOrderCode}
-                            onChange={(e) => setPromokitLastOrderCode(e.target.value)}
-                            placeholder="Automático"
-                            className="w-full mt-2 p-3 bg-white rounded-xl border border-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
-                          />
-                        </div>
-                      </div>
-
-                      {promokitSyncResult && (
-                        <div className="mt-5 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
-                          <div className="flex items-center gap-2 text-emerald-800 font-bold mb-2">
-                            <CheckCircle2 size={18} />
-                            Sincronização concluída
-                          </div>
-                          <p className="text-sm text-emerald-700">
-                            {promokitSyncResult.count} pedido(s) lido(s). Próximo código: {promokitSyncResult.nextLastOrderCode}.
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {promokitSyncResult.processedSales.map(item => (
-                              <span key={item.code} className="text-xs bg-white text-emerald-700 border border-emerald-100 px-3 py-1 rounded-lg font-bold">
-                                #{item.code} {item.createdSale ? 'lançado' : 'já existia'} · {item.movementCount} baixa(s)
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">Como a baixa funciona</h3>
-                      <p className="text-sm text-gray-500">
-                        Quando o pedido vier como kit, o sistema procura as marmitas escolhidas dentro do próprio pedido da Promokit.
-                        Se encontrar, baixa essas marmitas no estoque. Se não encontrar, usa a composição do kit cadastrada no cardápio.
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {vendasSubTab === 'registros' && (
-                  <motion.div 
-                    key="registros-vendas"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    className="space-y-4"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-xl font-bold text-gray-900">Últimos pedidos</h2>
-                        <p className="text-sm text-gray-500">Pedido mais recente sempre no topo.</p>
+                        <h3 className="font-bold text-gray-900">{sale.customerName}</h3>
+                        <p className="text-xs text-gray-400 flex items-center gap-1">
+                          <Calendar size={12} /> {sale.saleDate?.toDate().toLocaleDateString('pt-BR')}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-100">
+                            Pedido #{getSaleOrderNumber(sale)}
+                          </span>
+                          {sale.source === 'promokit' && (
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-lime-50 text-lime-700 px-2.5 py-1 rounded-lg border border-lime-100">
+                              Promokit
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600 mt-1 italic">"{sale.itemsDescription}"</p>
                       </div>
-                      <button
-                        disabled={isSyncingPromokit}
-                        onClick={() => handleSyncPromokitOrders()}
-                        className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl font-semibold hover:bg-emerald-700 transition-all disabled:opacity-50"
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-gray-400 uppercase">Valor</p>
+                      <p className="text-xl font-black text-emerald-600">
+                        R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                      <button 
+                        onClick={async () => {
+                          const hasLinkedMovements = movements.some(m => m.saleId === sale.id);
+                          const confirmMsg = hasLinkedMovements 
+                            ? 'Deseja excluir este registro de venda? O estoque será restaurado automaticamente.'
+                            : 'Deseja excluir este registro de venda? (AVISO: Esta venda é antiga e o estoque NÃO será restaurado automaticamente)';
+                          
+                          if (confirm(confirmMsg)) {
+                            try {
+                              const batch = writeBatch(db);
+                              batch.delete(doc(db, 'sales', sale.id));
+                              
+                              const linkedMovements = movements.filter(m => m.saleId === sale.id);
+                              linkedMovements.forEach(m => {
+                                batch.delete(doc(db, 'movements', m.id));
+                              });
+                              
+                              await batch.commit();
+                            } catch (err) {
+                              console.error("Erro ao deletar venda:", err);
+                            }
+                          }
+                        }}
+                        className="text-red-400 hover:text-red-600 mt-2 transition-colors"
                       >
-                        {isSyncingPromokit ? <Loader2 className="animate-spin" size={20} /> : <RefreshCcw size={20} />}
-                        Buscar novos pedidos
+                        <Trash2 size={16} />
                       </button>
                     </div>
-                    {sales.length === 0 ? (
-                      <div className="bg-white p-12 rounded-3xl text-center border-2 border-dashed border-gray-200">
-                        <DollarSign className="mx-auto text-gray-300 mb-4" size={48} />
-                        <p className="text-gray-500">Nenhuma venda registrada.</p>
-                      </div>
-                    ) : (
-                      sales.map(sale => (
-                        <div key={sale.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
-                              <UserPlus size={24} />
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-gray-900">{sale.customerName}</h3>
-                              <p className="text-xs text-gray-400 flex items-center gap-1">
-                                <Calendar size={12} /> {sale.saleDate?.toDate().toLocaleDateString('pt-BR')}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-2 mt-2">
-                                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-100">
-                                  Pedido #{getSaleOrderNumber(sale)}
-                                </span>
-                                {sale.source === 'promokit' && (
-                                  <span className="text-[10px] font-black uppercase tracking-wider bg-lime-50 text-lime-700 px-2.5 py-1 rounded-lg border border-lime-100">
-                                    Promokit
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-600 mt-1 italic">"{sale.itemsDescription}"</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-gray-400 uppercase">Valor</p>
-                            <p className="text-xl font-black text-emerald-600">
-                              R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </p>
-                            <button 
-                              onClick={async () => {
-                                const hasLinkedMovements = movements.some(m => m.saleId === sale.id);
-                                const confirmMsg = hasLinkedMovements 
-                                  ? 'Deseja excluir este registro de venda? O estoque será restaurado automaticamente.'
-                                  : 'Deseja excluir este registro de venda? (AVISO: Esta venda é antiga e o estoque NÃO será restaurado automaticamente)';
-                                
-                                if (confirm(confirmMsg)) {
-                                  try {
-                                    const batch = writeBatch(db);
-                                    batch.delete(doc(db, 'sales', sale.id));
-                                    
-                                    const linkedMovements = movements.filter(m => m.saleId === sale.id);
-                                    linkedMovements.forEach(m => {
-                                      batch.delete(doc(db, 'movements', m.id));
-                                    });
-                                    
-                                    await batch.commit();
-                                  } catch (err) {
-                                    console.error("Erro ao deletar venda:", err);
-                                  }
-                                }
-                              }}
-                              className="text-red-400 hover:text-red-600 mt-2 transition-colors"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+                ))
+              )}
             </motion.div>
           )}
 

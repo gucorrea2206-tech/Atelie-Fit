@@ -136,17 +136,8 @@ select {
 }
 
 .workspace-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px;
-  border: 1px solid rgba(226, 235, 224, 0.9);
-  border-radius: 24px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(239, 252, 231, 0.68)),
-    #ffffff;
-  box-shadow: var(--atelier-card-shadow);
+  display: block;
+  padding: 0;
 }
 
 .header-actions {
@@ -355,9 +346,7 @@ select {
 
 @media (max-width: 767px) {
   .workspace-header {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 20px;
+    padding: 0;
   }
 
   .header-actions {
