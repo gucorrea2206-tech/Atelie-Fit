@@ -103,17 +103,18 @@ async function processCampaignQueue(req: VercelRequest, res: VercelResponse) {
     try {
       const aiConfig = await getWhatsappAiConfig();
       const campaign = aiConfig.campaigns.find((entry) => entry.id === campaignId);
-      if (!campaign) throw new Error("Campanha não encontrada na configuração.");
 
       const result = await sendWhatsAppText(remoteJid, messageText);
-      const context = buildCampaignContext(remoteJid, campaign, messageText, "sent");
-      await saveCampaignContext(db, context);
+      if (campaign) {
+        const context = buildCampaignContext(remoteJid, campaign, messageText, "sent");
+        await saveCampaignContext(db, context);
+      }
       await db.collection("whatsapp_conversations").doc(remoteJid).collection("messages").add({
         direction: "outbound",
         text: messageText,
-        agent: campaign.campaignAgent || "Maya",
-        campaignId: campaign.id,
-        campaignName: campaign.name,
+        agent: campaign?.campaignAgent || item.agent || "Caio",
+        campaignId: campaign?.id || campaignId,
+        campaignName: campaign?.name || item.campaignName || "Automação",
         sendStatus: "sent",
         queueId: queueDoc.id,
         createdAt: new Date().toISOString(),

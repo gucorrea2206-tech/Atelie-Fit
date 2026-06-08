@@ -596,6 +596,7 @@ export default function App() {
   const [campaignQueue, setCampaignQueue] = useState<CampaignDispatchQueueItem[]>([]);
   const [selectedAgentKnowledge, setSelectedAgentKnowledge] = useState(defaultWhatsappAgents[1].name);
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
+  const [isQueueingPostSale, setIsQueueingPostSale] = useState(false);
   const [automationResult, setAutomationResult] = useState<any | null>(null);
   const [isQueueingCampaign, setIsQueueingCampaign] = useState(false);
   const [isProcessingCampaignQueue, setIsProcessingCampaignQueue] = useState(false);
@@ -1091,6 +1092,37 @@ export default function App() {
       setError(err.message || 'Erro ao rodar automações.');
     } finally {
       setIsRunningAutomations(false);
+    }
+  };
+
+  const handleQueuePostSaleFollowups = async () => {
+    setIsQueueingPostSale(true);
+    setAutomationResult(null);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/whatsapp/run-automations', {
+        method: 'POST',
+        headers: await getAuthenticatedHeaders(),
+        body: JSON.stringify({
+          dryRun: false,
+          queueFollowups: true,
+          automations: whatsappAutomations.map(automation =>
+            automation.id === 'post_delivery'
+              ? { ...automation, enabled: true }
+              : { ...automation, enabled: false }
+          ),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao preparar pós-venda.');
+      }
+      setAutomationResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao preparar pós-venda.');
+    } finally {
+      setIsQueueingPostSale(false);
     }
   };
 
@@ -4725,14 +4757,24 @@ export default function App() {
                       <h3 className="text-xl font-black text-gray-900">Automações configuráveis</h3>
                       <p className="text-sm text-gray-500">Rode primeiro em simulação; o envio real pode ser liberado depois.</p>
                     </div>
-                    <button
-                      onClick={handleRunWhatsappAutomations}
-                      disabled={isRunningAutomations}
-                      className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60"
-                    >
-                      {isRunningAutomations ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-                      Simular automações
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        onClick={handleRunWhatsappAutomations}
+                        disabled={isRunningAutomations}
+                        className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-60"
+                      >
+                        {isRunningAutomations ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+                        Simular automações
+                      </button>
+                      <button
+                        onClick={handleQueuePostSaleFollowups}
+                        disabled={isQueueingPostSale}
+                        className="flex items-center justify-center gap-2 px-5 py-3 bg-gray-900 text-white rounded-2xl text-sm font-black hover:bg-gray-800 transition-all disabled:opacity-60"
+                      >
+                        {isQueueingPostSale ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                        Preparar pós-venda
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {whatsappAutomations.map(automation => (
@@ -4790,6 +4832,8 @@ export default function App() {
                         {automationResult.candidates?.length || 0} cliente(s) elegíveis encontrados.
                         {' '}
                         {automationResult.operationalActions?.length || 0} regra(s) operacional(is) ativa(s).
+                        {' '}
+                        {automationResult.queuedCount ? `${automationResult.queuedCount} pós-venda(s) na fila.` : ''}
                       </p>
                     </div>
                   )}

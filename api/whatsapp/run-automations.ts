@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
@@ -44,6 +45,10 @@ function buildRemoteJid(phone: string) {
   return digits ? `${digits}@s.whatsapp.net` : "";
 }
 
+function getQueueDocId(prefix: string, key: string, remoteJid: string) {
+  return `${prefix}_${key}_${remoteJid.replace(/[^a-zA-Z0-9]/g, "_")}`;
+}
+
 function isRecentEnough(days: number | null, triggerDays: number) {
   return days !== null && days >= 0 && days <= triggerDays;
 }
@@ -76,12 +81,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = getAdminDb();
     const input = req.method === "POST" ? req.body || {} : req.query || {};
     const dryRun = input.dryRun !== false;
+    const queueFollowups = input.queueFollowups === true || input.queueFollowups === "true";
     const config = await getWhatsappAiConfig();
     const automations: AutomationConfig[] = Array.isArray(input.automations) ? input.automations : config.automations;
     const activeAutomations = automations.filter((automation) => automation.enabled);
     const customersSnapshot = await db.collection("promokit_customers").limit(200).get();
     const candidates: any[] = [];
     const sent: any[] = [];
+    const queued: any[] = [];
     const operationalActions: any[] = [];
 
     customersSnapshot.docs.forEach((doc) => {
@@ -128,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       });
 
-    if (!dryRun) {
+    if (!dryRun && !queueFollowups) {
       for (const candidate of candidates) {
         const remoteJid = buildRemoteJid(candidate.phone);
         if (!remoteJid) continue;
@@ -137,15 +144,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    if (queueFollowups) {
+      const postDeliveryCandidates = candidates.filter((candidate) => candidate.automationId === "post_delivery");
+      for (const candidate of postDeliveryCandidates) {
+        const remoteJid = buildRemoteJid(candidate.phone);
+        if (!remoteJid || !candidate.lastOrderCode) continue;
+
+        const queueRef = db
+          .collection("campaign_dispatch_queue")
+          .doc(getQueueDocId("post_sale", candidate.lastOrderCode, remoteJid));
+        const existing = await queueRef.get();
+        const existingStatus = existing.data()?.status;
+        if (existing.exists && ["pending", "sending", "sent"].includes(String(existingStatus))) {
+          queued.push({ ...candidate, remoteJid, skipped: true, reason: `already_${existingStatus}` });
+          continue;
+        }
+
+        await queueRef.set(
+          {
+            campaignId: "post_sale",
+            campaignName: "Pós-venda automático",
+            automationId: candidate.automationId,
+            remoteJid,
+            phone: candidate.phone || "",
+            customerName: candidate.customerName || "",
+            messageText: candidate.message,
+            agent: candidate.agent || "Caio",
+            status: "pending",
+            scheduledFor: Timestamp.fromDate(new Date()),
+            attempts: 0,
+            source: "automation",
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            metadata: {
+              lastOrderCode: candidate.lastOrderCode,
+              lastOrderTotal: candidate.lastOrderTotal,
+              reason: candidate.reason,
+            },
+          },
+          { merge: true }
+        );
+        queued.push({ ...candidate, remoteJid, queued: true });
+      }
+    }
+
     await logOperationalEvent(db, {
       type: "whatsapp_automations",
-      title: dryRun ? "Automações simuladas" : "Automações executadas",
+      title: queueFollowups ? "Pós-venda enfileirado" : dryRun ? "Automações simuladas" : "Automações executadas",
       status: candidates.length || operationalActions.length ? "info" : "success",
       source: "whatsapp",
-      message: `${candidates.length} candidato(s), ${operationalActions.length} ação(ões) operacional(is), ${sent.length} envio(s).`,
+      message: `${candidates.length} candidato(s), ${queued.length} pós-venda(s) enfileirado(s), ${operationalActions.length} ação(ões) operacional(is), ${sent.length} envio(s).`,
       metadata: {
         dryRun,
+        queueFollowups,
         candidateCount: candidates.length,
+        queuedCount: queued.length,
         operationalActionCount: operationalActions.length,
         sentCount: sent.length,
       },
@@ -156,6 +209,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       dryRun,
       candidates,
       operationalActions,
+      queuedCount: queued.length,
+      queued,
       sentCount: sent.length,
       sent,
     });
