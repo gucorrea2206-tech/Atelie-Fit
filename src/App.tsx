@@ -634,6 +634,7 @@ export default function App() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [newSale, setNewSale] = useState({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
   const [isSyncingPromokit, setIsSyncingPromokit] = useState(false);
+  const [expandedSaleDetails, setExpandedSaleDetails] = useState<Record<string, boolean>>({});
   const [promokitLastOrderCode, setPromokitLastOrderCode] = useState('');
   const [promokitSyncResult, setPromokitSyncResult] = useState<{
     count: number;
@@ -1606,6 +1607,24 @@ export default function App() {
   const selectedFlowCampaign = whatsappCampaigns.find(campaign => campaign.id === selectedFlowCampaignId) || selectedCampaign;
   const isSelectedCampaignEditing = selectedCampaign?.status === 'Rascunho' || editingCampaignId === selectedCampaign?.id;
   const getSaleOrderNumber = (sale: Sale) => sale.orderNumber || sale.promokitOrderCode || sale.id.slice(0, 6).toUpperCase();
+  const getSaleMovements = (sale: Sale) => {
+    const orderNumber = getSaleOrderNumber(sale);
+    return movements.filter(movement =>
+      movement.saleId === sale.id ||
+      Boolean(sale.promokitOrderCode && movement.promokitOrderCode === sale.promokitOrderCode) ||
+      Boolean(orderNumber && movement.promokitOrderCode === orderNumber)
+    );
+  };
+  const getRecognitionLabel = (recognitionSource?: string) => {
+    if (recognitionSource === 'promokit_kit_selection') return 'Escolha enviada pela Promokit';
+    if (recognitionSource === 'ai_kit_observation') return 'Lido pela IA nas escolhas do kit';
+    if (recognitionSource === 'ai_kit_substitution') return 'Troca interpretada pela IA';
+    if (recognitionSource === 'local_kit_composition') return 'Composição local do kit';
+    return 'Item lançado no estoque';
+  };
+  const toggleSaleDetails = (saleId: string) => {
+    setExpandedSaleDetails(current => ({ ...current, [saleId]: !current[saleId] }));
+  };
   const getAgentConversationStats = (agentName: string) => {
     const active = whatsappConversations.filter(conversation => conversation.agent === agentName).length;
     return {
@@ -2736,65 +2755,146 @@ export default function App() {
                   <p className="text-gray-500">Nenhuma venda registrada.</p>
                 </div>
               ) : (
-                sales.map(sale => (
-                  <div key={sale.id} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
-                        <UserPlus size={24} />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-gray-900">{sale.customerName}</h3>
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                          <Calendar size={12} /> {sale.saleDate?.toDate().toLocaleDateString('pt-BR')}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-100">
-                            Pedido #{getSaleOrderNumber(sale)}
-                          </span>
-                          {sale.source === 'promokit' && (
-                            <span className="text-[10px] font-black uppercase tracking-wider bg-lime-50 text-lime-700 px-2.5 py-1 rounded-lg border border-lime-100">
-                              Promokit
-                            </span>
-                          )}
+                sales.map(sale => {
+                  const saleMovements = getSaleMovements(sale);
+                  const isExpanded = Boolean(expandedSaleDetails[sale.id]);
+
+                  return (
+                    <div key={sale.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                      <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <button
+                          type="button"
+                          onClick={() => toggleSaleDetails(sale.id)}
+                          className="flex items-center gap-4 text-left flex-1 min-w-0"
+                        >
+                          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                            <UserPlus size={24} />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-gray-900">{sale.customerName}</h3>
+                            <p className="text-xs text-gray-400 flex items-center gap-1">
+                              <Calendar size={12} /> {sale.saleDate?.toDate().toLocaleDateString('pt-BR')}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg border border-emerald-100">
+                                Pedido #{getSaleOrderNumber(sale)}
+                              </span>
+                              {sale.source === 'promokit' && (
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-lime-50 text-lime-700 px-2.5 py-1 rounded-lg border border-lime-100">
+                                  Promokit
+                                </span>
+                              )}
+                              <span className="text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 px-2.5 py-1 rounded-lg border border-gray-100">
+                                {saleMovements.length} baixa(s)
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1 italic line-clamp-1">"{sale.itemsDescription}"</p>
+                          </div>
+                        </button>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-4">
+                          <div className="text-right">
+                            <p className="text-xs font-bold text-gray-400 uppercase">Valor</p>
+                            <p className="text-xl font-black text-emerald-600">
+                              R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleSaleDetails(sale.id)}
+                            className="w-10 h-10 rounded-2xl bg-gray-50 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700 transition-colors flex items-center justify-center"
+                            aria-label={isExpanded ? 'Recolher detalhes do pedido' : 'Abrir detalhes do pedido'}
+                          >
+                            <ChevronDown size={18} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              const hasLinkedMovements = movements.some(m => m.saleId === sale.id);
+                              const confirmMsg = hasLinkedMovements 
+                                ? 'Deseja excluir este registro de venda? O estoque será restaurado automaticamente.'
+                                : 'Deseja excluir este registro de venda? (AVISO: Esta venda é antiga e o estoque NÃO será restaurado automaticamente)';
+                              
+                              if (confirm(confirmMsg)) {
+                                try {
+                                  const batch = writeBatch(db);
+                                  batch.delete(doc(db, 'sales', sale.id));
+                                  
+                                  const linkedMovements = movements.filter(m => m.saleId === sale.id);
+                                  linkedMovements.forEach(m => {
+                                    batch.delete(doc(db, 'movements', m.id));
+                                  });
+                                  
+                                  await batch.commit();
+                                } catch (err) {
+                                  console.error("Erro ao deletar venda:", err);
+                                }
+                              }
+                            }}
+                            className="w-10 h-10 rounded-2xl bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 transition-colors flex items-center justify-center"
+                            aria-label="Excluir venda"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1 italic">"{sale.itemsDescription}"</p>
                       </div>
+
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="px-6 pb-6">
+                              <div className="border-t border-gray-100 pt-4">
+                                <div className="flex items-center justify-between gap-3 mb-3">
+                                  <h4 className="text-sm font-black text-gray-900">Marmitas do pedido</h4>
+                                  <span className="text-xs font-bold text-gray-400">{sale.totalQuantity || saleMovements.length} un no registro</span>
+                                </div>
+
+                                {saleMovements.length === 0 ? (
+                                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100">
+                                    <p className="text-sm font-bold text-amber-900">Sem baixa detalhada vinculada.</p>
+                                    <p className="text-xs text-amber-700 mt-1">
+                                      Esse pedido pode ter sido lançado antes do detalhamento de kits, ou chegou sem marmitas claras da Promokit.
+                                    </p>
+                                    <p className="text-xs text-amber-700 mt-2">{sale.itemsDescription}</p>
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    {saleMovements.map(movement => {
+                                      const product = products.find(item => item.id === movement.productId);
+                                      return (
+                                        <div key={movement.id} className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                          <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                              <p className="text-sm font-black text-gray-900">{product?.name || movement.promokitSelectedName || 'Marmita não encontrada'}</p>
+                                              <p className="text-xs text-gray-500 mt-1">{getRecognitionLabel(movement.recognitionSource)}</p>
+                                            </div>
+                                            <span className="text-sm font-black text-emerald-700 bg-white border border-emerald-100 px-2.5 py-1 rounded-xl">
+                                              {movement.quantity} un
+                                            </span>
+                                          </div>
+                                          {movement.promokitSelectedName && product?.name && movement.promokitSelectedName !== product.name && (
+                                            <p className="text-xs text-gray-500 mt-2">Nome recebido: {movement.promokitSelectedName}</p>
+                                          )}
+                                          {movement.promokitDetails && (
+                                            <p className="text-xs text-gray-500 mt-2 line-clamp-3">Detalhes: {movement.promokitDetails}</p>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-bold text-gray-400 uppercase">Valor</p>
-                      <p className="text-xl font-black text-emerald-600">
-                        R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                      <button 
-                        onClick={async () => {
-                          const hasLinkedMovements = movements.some(m => m.saleId === sale.id);
-                          const confirmMsg = hasLinkedMovements 
-                            ? 'Deseja excluir este registro de venda? O estoque será restaurado automaticamente.'
-                            : 'Deseja excluir este registro de venda? (AVISO: Esta venda é antiga e o estoque NÃO será restaurado automaticamente)';
-                          
-                          if (confirm(confirmMsg)) {
-                            try {
-                              const batch = writeBatch(db);
-                              batch.delete(doc(db, 'sales', sale.id));
-                              
-                              const linkedMovements = movements.filter(m => m.saleId === sale.id);
-                              linkedMovements.forEach(m => {
-                                batch.delete(doc(db, 'movements', m.id));
-                              });
-                              
-                              await batch.commit();
-                            } catch (err) {
-                              console.error("Erro ao deletar venda:", err);
-                            }
-                          }
-                        }}
-                        className="text-red-400 hover:text-red-600 mt-2 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </motion.div>
           )}
