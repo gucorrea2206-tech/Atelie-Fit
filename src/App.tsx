@@ -811,6 +811,14 @@ export default function App() {
     setStock(stockItems);
   }, [products, movements]);
 
+  const getAuthenticatedHeaders = async () => {
+    const token = await auth.currentUser?.getIdToken();
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
   const handleProcessIA = async (type: 'entrada' | 'saida') => {
     if (!inputText.trim()) return;
     setIsProcessing(true);
@@ -837,7 +845,7 @@ export default function App() {
     try {
       const response = await fetch('/api/promokit/sync-new-orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedHeaders(),
         body: JSON.stringify({
           lastOrderCode: promokitLastOrderCode.trim() || undefined,
           take,
@@ -866,7 +874,7 @@ export default function App() {
     try {
       const response = await fetch('/api/promokit/sync-orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedHeaders(),
         body: JSON.stringify({
           lastOrderCode: '1',
           take: 50,
@@ -1070,7 +1078,7 @@ export default function App() {
     try {
       const response = await fetch('/api/whatsapp/run-automations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedHeaders(),
         body: JSON.stringify({ dryRun: true, automations: whatsappAutomations }),
       });
       const data = await response.json();
@@ -1103,7 +1111,7 @@ export default function App() {
     try {
       const response = await fetch('/api/whatsapp/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedHeaders(),
         body: JSON.stringify({
           action: 'enqueue',
           campaignId: selectedCampaign.id,
@@ -1131,7 +1139,7 @@ export default function App() {
     try {
       const response = await fetch('/api/whatsapp/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedHeaders(),
         body: JSON.stringify({ action: 'processQueue', limit: 12 }),
       });
       const data = await response.json();

@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 
 function extractOrders(response: any) {
   return response?.data?.pedidos || response?.pedidos || [];
@@ -79,6 +80,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!["GET", "POST"].includes(req.method || "")) {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const apiUser = await requireAdminApiUser(req, res);
+  if (!apiUser) return;
 
   try {
     const input = req.method === "POST" ? req.body || {} : req.query;

@@ -4,6 +4,7 @@ import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
 import { logOperationalEvent } from "../_lib/operationalEvents.js";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 
 function normalizePhone(order: any) {
   return (
@@ -88,6 +89,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET" && !isAuthorizedCron(req)) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  if (req.method === "POST") {
+    const apiUser = await requireAdminApiUser(req, res);
+    if (!apiUser) return;
   }
 
   try {

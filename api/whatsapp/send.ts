@@ -5,6 +5,7 @@ import { sendWhatsAppText } from "../_lib/evolution.js";
 import { buildCampaignContext, saveCampaignContext } from "../_lib/campaignContext.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
 import { logOperationalEvent } from "../_lib/operationalEvents.js";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 
 type Recipient = {
   remoteJid?: string;
@@ -172,6 +173,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const apiUser = await requireAdminApiUser(req, res);
+  if (!apiUser) return;
 
   const { remoteJid, text, campaignId, recipients, dryRun = false, action = "enqueue", scheduledFor, limit } = req.body || {};
   if (action === "processQueue") {

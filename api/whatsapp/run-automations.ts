@@ -3,6 +3,7 @@ import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
 import { logOperationalEvent } from "../_lib/operationalEvents.js";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 
 type AutomationConfig = {
   id: string;
@@ -64,6 +65,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET" && !isAuthorizedCron(req)) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+
+  if (req.method === "POST") {
+    const apiUser = await requireAdminApiUser(req, res);
+    if (!apiUser) return;
   }
 
   try {
