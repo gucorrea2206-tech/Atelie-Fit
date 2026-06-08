@@ -133,7 +133,7 @@ function buildDetailsText(value: any, depth = 0, found: string[] = []) {
 
   if (typeof value === "string") {
     const text = value.trim();
-    if (text && text.length <= 300 && !found.includes(text)) found.push(text);
+    if (text && text.length <= 2000 && !found.includes(text)) found.push(text);
     return found.join("\n");
   }
 
@@ -179,7 +179,7 @@ function buildDetailsText(value: any, depth = 0, found: string[] = []) {
     if (typeof entry === "string" || typeof entry === "number") {
       if (!isRelevantTextField) return;
       const text = String(entry).trim();
-      if (text && text.length <= 300 && !found.includes(text)) found.push(text);
+      if (text && text.length <= 2000 && !found.includes(text)) found.push(text);
       return;
     }
 
@@ -187,6 +187,54 @@ function buildDetailsText(value: any, depth = 0, found: string[] = []) {
   });
 
   return found.join("\n");
+}
+
+function rangesOverlap(a: { start: number; end: number }, b: { start: number; end: number }) {
+  return a.start < b.end && b.start < a.end;
+}
+
+function findProductsExplicitlyListedInDetails(lineItem: PromokitLineItem, productsSnapshot: QuerySnapshot) {
+  const normalizedDetails = normalizeText(lineItem.detailsText);
+  if (!normalizedDetails) return [];
+
+  const consumedRanges: { start: number; end: number }[] = [];
+  const matchedByProduct = new Map<string, ResolvedSelectedProduct>();
+  const candidates = productsSnapshot.docs
+    .map((doc) => ({
+      doc,
+      name: String(doc.data().name || ""),
+      normalizedName: normalizeText(String(doc.data().name || "")),
+    }))
+    .filter((candidate) => candidate.normalizedName.length > 8)
+    .sort((a, b) => b.normalizedName.length - a.normalizedName.length);
+
+  candidates.forEach((candidate) => {
+    const productPattern = candidate.normalizedName.split(" ").filter(Boolean).join("\\s+");
+    if (!productPattern) return;
+
+    const pattern = new RegExp(`(?:^|\\s)(\\d+)\\s*x\\s+${productPattern}(?=\\s|$)`, "g");
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(normalizedDetails)) !== null) {
+      const quantity = Number(match[1] || 0);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+      const matchStart = match.index + match[0].indexOf(match[1]);
+      const matchEnd = pattern.lastIndex;
+      const range = { start: matchStart, end: matchEnd };
+      if (consumedRanges.some((consumedRange) => rangesOverlap(range, consumedRange))) continue;
+
+      consumedRanges.push(range);
+      const current = matchedByProduct.get(candidate.doc.ref.id);
+      matchedByProduct.set(candidate.doc.ref.id, {
+        productId: candidate.doc.ref.id,
+        quantity: (current?.quantity || 0) + quantity,
+        name: candidate.name,
+      });
+    }
+  });
+
+  return [...matchedByProduct.values()];
 }
 
 function collectNestedSelectedProducts(value: any, parentName: string, found: PromokitSelectedProduct[] = []) {
@@ -646,16 +694,29 @@ export async function processPromokitOrder(order: any, options: ProcessOrderOpti
       const kitData = kitDoc.data();
       const kitItems = Array.isArray(kitData.items) ? kitData.items : [];
       const promokitCatalogId = lineItem.promokitProductId || lineItem.pdvCode || normalizeText(lineItem.name);
-      const selectedProducts = await findProductsSelectedInsideKit(lineItem, productsSnapshot);
+      const explicitProducts = findProductsExplicitlyListedInDetails(lineItem, productsSnapshot);
+      const nestedSelectedProducts = explicitProducts.length > 0 ? [] : await findProductsSelectedInsideKit(lineItem, productsSnapshot);
+      const selectedProducts = explicitProducts.length > 0 ? explicitProducts : nestedSelectedProducts;
       const aiInterpretation =
         selectedProducts.length > 0
-          ? { selectedProducts: [], substitutions: [], confidence: 0, reason: "Promokit enviou escolhas estruturadas." }
+          ? {
+              selectedProducts: [],
+              substitutions: [],
+              confidence: 0,
+              reason: explicitProducts.length > 0
+                ? "Promokit enviou as marmitas na descricao do item."
+                : "Promokit enviou escolhas estruturadas.",
+            }
           : await interpretKitDetailsWithAi({ lineItem, kitItems, productsSnapshot });
       const aiSelectedProducts = selectedProducts.length > 0 ? [] : resolveAiSelectedProducts(aiInterpretation, lineItem, productsSnapshot);
       const hasAiSubstitutions = aiInterpretation.substitutions.length > 0 && aiInterpretation.confidence >= 0.45;
       const selectedSourceProducts = selectedProducts.length > 0 ? selectedProducts : aiSelectedProducts;
       const selectedRecognitionSource =
-        selectedProducts.length > 0 ? "promokit_kit_selection" : "ai_kit_observation";
+        explicitProducts.length > 0
+          ? "promokit_item_description"
+          : selectedProducts.length > 0
+            ? "promokit_kit_selection"
+            : "ai_kit_observation";
 
       await db.collection("promokit_products").doc(promokitCatalogId).set(
         {
@@ -805,11 +866,23 @@ export async function processPromokitOrder(order: any, options: ProcessOrderOpti
     }
 
     if (isCustomKitLineItem(lineItem)) {
-      const aiInterpretation = await interpretKitDetailsWithAi({ lineItem, kitItems: [], productsSnapshot });
-      const aiSelectedProducts = resolveAiSelectedProducts(aiInterpretation, lineItem, productsSnapshot);
+      const explicitProducts = findProductsExplicitlyListedInDetails(lineItem, productsSnapshot);
+      const aiInterpretation =
+        explicitProducts.length > 0
+          ? {
+              selectedProducts: [],
+              substitutions: [],
+              confidence: 0,
+              reason: "Promokit enviou as marmitas na descricao do item.",
+            }
+          : await interpretKitDetailsWithAi({ lineItem, kitItems: [], productsSnapshot });
+      const aiSelectedProducts =
+        explicitProducts.length > 0 ? [] : resolveAiSelectedProducts(aiInterpretation, lineItem, productsSnapshot);
+      const selectedSourceProducts = explicitProducts.length > 0 ? explicitProducts : aiSelectedProducts;
+      const selectedRecognitionSource = explicitProducts.length > 0 ? "promokit_item_description" : "ai_kit_observation";
 
-      if (aiSelectedProducts.length > 0) {
-        for (const selectedProduct of aiSelectedProducts) {
+      if (selectedSourceProducts.length > 0) {
+        for (const selectedProduct of selectedSourceProducts) {
           const quantity = selectedProduct.quantity * lineItem.quantity;
           if (!selectedProduct.productId || quantity <= 0) continue;
 
@@ -822,13 +895,13 @@ export async function processPromokitOrder(order: any, options: ProcessOrderOpti
             createdAt: FieldValue.serverTimestamp(),
             saleId: saleRef.id,
             source: "promokit",
-            recognitionSource: "ai_kit_observation",
+            recognitionSource: selectedRecognitionSource,
             promokitOrderCode: code,
             promokitItemId: lineItem.promokitItemId || null,
             promokitProductId: lineItem.promokitProductId || null,
             promokitSelectedName: selectedProduct.name,
             promokitDetails: lineItem.detailsText || null,
-            aiReason: aiInterpretation.reason,
+            aiReason: explicitProducts.length > 0 ? "Promokit enviou as marmitas na descricao do item." : aiInterpretation.reason,
           });
           movementCount += 1;
           totalQuantity += quantity;

@@ -1651,6 +1651,7 @@ export default function App() {
     );
   };
   const getRecognitionLabel = (recognitionSource?: string) => {
+    if (recognitionSource === 'promokit_item_description') return 'Descrição do item Promokit';
     if (recognitionSource === 'promokit_kit_selection') return 'Escolha enviada pela Promokit';
     if (recognitionSource === 'ai_kit_observation') return 'Lido pela IA nas escolhas do kit';
     if (recognitionSource === 'ai_kit_substitution') return 'Troca interpretada pela IA';
