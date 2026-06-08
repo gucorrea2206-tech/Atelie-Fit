@@ -14,6 +14,7 @@ import {
   Sale,
   PromokitLead,
   OperationalEvent,
+  CampaignDispatchQueueItem,
   handleFirestoreError, 
   OperationType 
 } from './firebase';
@@ -591,9 +592,14 @@ export default function App() {
   const [selectedFlowCampaignId, setSelectedFlowCampaignId] = useState(defaultWhatsappCampaigns[0].id);
   const [whatsappLeads, setWhatsappLeads] = useState<PromokitLead[]>([]);
   const [operationalEvents, setOperationalEvents] = useState<OperationalEvent[]>([]);
+  const [campaignQueue, setCampaignQueue] = useState<CampaignDispatchQueueItem[]>([]);
   const [selectedAgentKnowledge, setSelectedAgentKnowledge] = useState(defaultWhatsappAgents[1].name);
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
   const [automationResult, setAutomationResult] = useState<any | null>(null);
+  const [isQueueingCampaign, setIsQueueingCampaign] = useState(false);
+  const [isProcessingCampaignQueue, setIsProcessingCampaignQueue] = useState(false);
+  const [campaignQueueResult, setCampaignQueueResult] = useState<any | null>(null);
+  const [campaignSchedule, setCampaignSchedule] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
@@ -762,6 +768,11 @@ export default function App() {
       setOperationalEvents(events);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'operational_events'));
 
+    const unsubCampaignQueue = onSnapshot(query(collection(db, 'campaign_dispatch_queue'), orderBy('createdAt', 'desc')), (snapshot) => {
+      const queueItems = snapshot.docs.slice(0, 120).map(doc => ({ id: doc.id, ...doc.data() } as CampaignDispatchQueueItem));
+      setCampaignQueue(queueItems);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'campaign_dispatch_queue'));
+
     return () => {
       unsubProducts();
       unsubMovements();
@@ -773,6 +784,7 @@ export default function App() {
       unsubWhatsappAiConfig();
       unsubPromokitLeads();
       unsubOperationalEvents();
+      unsubCampaignQueue();
     };
   }, [user]);
 
@@ -1068,6 +1080,67 @@ export default function App() {
       setError(err.message || 'Erro ao rodar automações.');
     } finally {
       setIsRunningAutomations(false);
+    }
+  };
+
+  const handleQueueSelectedCampaign = async () => {
+    if (!selectedCampaign) return;
+    if (selectedCampaign.status !== 'Finalizada') {
+      setError('Finalize a campanha antes de preparar o disparo.');
+      return;
+    }
+    if (campaignRecipients.length === 0) {
+      setError('Nenhum lead com telefone disponível para enfileirar.');
+      return;
+    }
+
+    setIsQueueingCampaign(true);
+    setCampaignQueueResult(null);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'enqueue',
+          campaignId: selectedCampaign.id,
+          recipients: campaignRecipients,
+          scheduledFor: campaignSchedule ? new Date(campaignSchedule).toISOString() : new Date().toISOString(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao preparar fila da campanha.');
+      }
+      setCampaignQueueResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao preparar fila da campanha.');
+    } finally {
+      setIsQueueingCampaign(false);
+    }
+  };
+
+  const handleProcessCampaignQueue = async () => {
+    setIsProcessingCampaignQueue(true);
+    setCampaignQueueResult(null);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'processQueue', limit: 12 }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao processar fila de campanhas.');
+      }
+      setCampaignQueueResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao processar fila de campanhas.');
+    } finally {
+      setIsProcessingCampaignQueue(false);
     }
   };
 
@@ -1536,11 +1609,29 @@ export default function App() {
   });
   const activeCampaigns = whatsappCampaigns.filter(campaign => campaign.status === 'Finalizada' || campaign.status === 'Pausada');
   const readyCampaigns = whatsappCampaigns.filter(campaign => campaign.status === 'Finalizada');
+  const pendingCampaignQueue = campaignQueue.filter(item => item.status === 'pending');
+  const failedCampaignQueue = campaignQueue.filter(item => item.status === 'failed');
   const campaignKnowledgeMissing = whatsappCampaigns.filter(campaign =>
     campaign.status !== 'Rascunho' && !campaign.campaignKnowledge.trim()
   );
   const pendingHumanConversations = whatsappConversations.filter(conversation => conversation.score < 50);
   const latestOperationalEvents = operationalEvents.slice(0, 8);
+  const selectedCampaignQueue = selectedCampaign
+    ? campaignQueue.filter(item => item.campaignId === selectedCampaign.id)
+    : [];
+  const selectedCampaignQueueStats = {
+    pending: selectedCampaignQueue.filter(item => item.status === 'pending').length,
+    sent: selectedCampaignQueue.filter(item => item.status === 'sent').length,
+    failed: selectedCampaignQueue.filter(item => item.status === 'failed').length,
+    skipped: selectedCampaignQueue.filter(item => item.status === 'skipped').length,
+  };
+  const campaignRecipients = whatsappLeads
+    .filter(lead => Boolean(lead.phone))
+    .slice(0, 200)
+    .map(lead => ({
+      name: lead.name || 'Cliente',
+      phone: lead.phone || '',
+    }));
   const operationalWarnings = [
     ...outOfStockItems.slice(0, 3).map(item => ({
       title: `${item.name} sem estoque`,
@@ -1562,6 +1653,13 @@ export default function App() {
       icon: Headphones,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
+    })),
+    ...failedCampaignQueue.slice(0, 2).map(item => ({
+      title: `Falha no disparo: ${item.campaignName}`,
+      description: item.lastError || `${item.customerName || item.phone || item.remoteJid} não recebeu a campanha.`,
+      icon: Send,
+      color: 'text-red-600',
+      bg: 'bg-red-50',
     })),
   ];
   const getTabIcon = (tab: AppTab) => {
@@ -1763,7 +1861,7 @@ export default function App() {
                   { label: 'Pedidos hoje', value: salesToday.length, note: `${promokitSalesToday.length} via Promokit`, icon: ShoppingCart, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                   { label: 'Estoque crítico', value: lowStockItems.length, note: `${outOfStockItems.length} zerado(s)`, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
                   { label: 'Leads parados', value: stalledLeads.length, note: '15+ dias sem compra', icon: UserPlus, color: 'text-amber-600', bg: 'bg-amber-50' },
-                  { label: 'Campanhas prontas', value: readyCampaigns.length, note: `${activeCampaigns.length} ativa(s)/pausada(s)`, icon: Megaphone, color: 'text-blue-600', bg: 'bg-blue-50' },
+                  { label: 'Fila de campanhas', value: pendingCampaignQueue.length, note: `${failedCampaignQueue.length} falha(s)`, icon: Megaphone, color: 'text-blue-600', bg: 'bg-blue-50' },
                 ].map(card => (
                   <div key={card.label} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
                     <div className={`p-3 rounded-2xl ${card.bg} shrink-0`}>
@@ -1870,7 +1968,7 @@ export default function App() {
                       {[
                         { label: 'Promokit', value: recentPromokitSales.length ? 'Recebendo pedidos' : 'Aguardando pedidos', status: recentPromokitSales.length ? 'ok' : 'warn' },
                         { label: 'WhatsApp IA', value: whatsappAgentConfigs.some(agent => agent.enabled) ? 'Agentes ativos' : 'Sem agentes ativos', status: whatsappAgentConfigs.some(agent => agent.enabled) ? 'ok' : 'warn' },
-                        { label: 'Campanhas', value: readyCampaigns.length ? 'Prontas para disparo' : 'Sem campanha finalizada', status: readyCampaigns.length ? 'ok' : 'warn' },
+                        { label: 'Campanhas', value: pendingCampaignQueue.length ? `${pendingCampaignQueue.length} na fila` : `${readyCampaigns.length} pronta(s)`, status: failedCampaignQueue.length ? 'error' : readyCampaigns.length ? 'ok' : 'warn' },
                         { label: 'Estoque', value: outOfStockItems.length ? 'Itens zerados' : 'Sem ruptura crítica', status: outOfStockItems.length ? 'error' : 'ok' },
                       ].map(item => (
                         <div key={item.label} className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50">
@@ -3501,6 +3599,99 @@ export default function App() {
                         <p className="text-xs text-gray-500">Campanhas finalizadas são disparadas e continuadas pela aba Fluxos.</p>
                       </div>
                     )}
+
+                    <div className="p-5 bg-gray-50 rounded-3xl border border-gray-100 space-y-4">
+                      <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xs font-black uppercase text-emerald-700">Fila segura de disparo</p>
+                          <h4 className="text-lg font-black text-gray-900 mt-1">Preparar campanha para envio controlado</h4>
+                          <p className="text-sm text-gray-500 mt-1">
+                            A campanha entra em fila por cliente. O envio acontece em lotes, com status individual e proteção contra duplicidade.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 min-w-full lg:min-w-[360px]">
+                          {[
+                            ['Fila', selectedCampaignQueueStats.pending, 'text-blue-600'],
+                            ['Enviado', selectedCampaignQueueStats.sent, 'text-emerald-600'],
+                            ['Falha', selectedCampaignQueueStats.failed, 'text-red-600'],
+                            ['Pulou', selectedCampaignQueueStats.skipped, 'text-gray-500'],
+                          ].map(([label, value, color]) => (
+                            <div key={String(label)} className="bg-white rounded-2xl p-3 text-center border border-gray-100">
+                              <p className={`text-lg font-black ${color}`}>{value}</p>
+                              <p className="text-[10px] font-black uppercase text-gray-400">{label}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-gray-400 mb-1">Agendar a partir de</p>
+                          <input
+                            type="datetime-local"
+                            value={campaignSchedule}
+                            onChange={(event) => setCampaignSchedule(event.target.value)}
+                            className="w-full bg-white rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <button
+                          disabled={isQueueingCampaign || selectedCampaign.status !== 'Finalizada' || campaignRecipients.length === 0}
+                          onClick={handleQueueSelectedCampaign}
+                          className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isQueueingCampaign ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
+                          Enfileirar {campaignRecipients.length} lead(s)
+                        </button>
+                        <button
+                          disabled={isProcessingCampaignQueue || pendingCampaignQueue.length === 0}
+                          onClick={handleProcessCampaignQueue}
+                          className="flex items-center justify-center gap-2 px-5 py-3 bg-gray-900 text-white rounded-2xl text-sm font-black hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isProcessingCampaignQueue ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} />}
+                          Processar lote
+                        </button>
+                      </div>
+
+                      {selectedCampaign.status !== 'Finalizada' && (
+                        <p className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+                          Finalize a campanha antes de enfileirar disparos.
+                        </p>
+                      )}
+
+                      {campaignQueueResult && (
+                        <div className="bg-white border border-gray-100 rounded-2xl p-4">
+                          <p className="text-sm font-black text-gray-900">Resultado da fila</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {campaignQueueResult.queuedCount !== undefined && `${campaignQueueResult.queuedCount} enfileirado(s), ${campaignQueueResult.skippedCount || 0} pulado(s).`}
+                            {campaignQueueResult.sentCount !== undefined && `${campaignQueueResult.sentCount} enviado(s), ${campaignQueueResult.failedCount || 0} falha(s).`}
+                          </p>
+                        </div>
+                      )}
+
+                      {selectedCampaignQueue.length > 0 && (
+                        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                          <div className="grid grid-cols-1 divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                            {selectedCampaignQueue.slice(0, 12).map(item => (
+                              <div key={item.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-black text-gray-900 truncate">{item.customerName || item.phone || item.remoteJid}</p>
+                                  <p className="text-xs text-gray-500 truncate">{item.messageText}</p>
+                                </div>
+                                <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg self-start sm:self-auto ${
+                                  item.status === 'sent' ? 'bg-emerald-100 text-emerald-700' :
+                                  item.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                  item.status === 'pending' ? 'bg-blue-100 text-blue-700' :
+                                  item.status === 'sending' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {item.status}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

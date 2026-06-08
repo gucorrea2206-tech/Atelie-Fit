@@ -165,5 +165,10 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if false;
     }
+
+    match /campaign_dispatch_queue/{queueId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
   }
 }

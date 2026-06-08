@@ -140,6 +140,24 @@ export interface OperationalEvent {
   createdAt?: Timestamp;
 }
 
+export interface CampaignDispatchQueueItem {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  remoteJid: string;
+  phone?: string;
+  customerName?: string;
+  messageText: string;
+  variantIndex?: number;
+  status: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped';
+  attempts?: number;
+  lastError?: string;
+  scheduledFor?: Timestamp;
+  sentAt?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
