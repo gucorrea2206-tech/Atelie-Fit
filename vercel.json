@@ -3,6 +3,10 @@
     {
       "path": "/api/promokit/sync-new-orders",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/whatsapp/run-automations",
+      "schedule": "0 9 * * *"
     }
   ]
 }

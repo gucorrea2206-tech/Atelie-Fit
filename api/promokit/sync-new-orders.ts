@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { processPromokitOrder } from "../_lib/promokitOrderProcessor.js";
 import { getPromokitOrder, listPromokitLatestOrders } from "../_lib/promokit.js";
+import { logOperationalEvent } from "../_lib/operationalEvents.js";
 
 function normalizePhone(order: any) {
   return (
@@ -176,6 +177,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     }
 
+    await logOperationalEvent(db, {
+      type: "promokit_sync",
+      title: savedCodes.length ? "Pedidos Promokit sincronizados" : "Sincronização Promokit sem novos pedidos",
+      status: savedCodes.length ? "success" : "info",
+      source: "promokit",
+      message: `${savedCodes.length} pedido(s) salvo(s), ${processedSales.length} venda(s) processada(s).`,
+      entityId: nextLastOrderCode,
+      metadata: {
+        status,
+        previousLastOrderCode: lastOrderCode,
+        nextLastOrderCode,
+        savedCodes,
+        processedSales,
+        leadBackfill,
+      },
+    });
+
     return res.status(200).json({
       ok: true,
       status,
@@ -189,6 +207,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Promokit automatic sync failed";
     console.error("Promokit automatic sync failed", { error: message });
+    await logOperationalEvent(getAdminDb(), {
+      type: "promokit_sync",
+      title: "Falha na sincronização Promokit",
+      status: "error",
+      source: "promokit",
+      message,
+    });
     return res.status(500).json({ ok: false, error: message });
   }
 }

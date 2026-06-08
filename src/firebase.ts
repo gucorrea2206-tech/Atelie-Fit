@@ -128,6 +128,18 @@ export interface PromokitLead {
   createdAt?: string;
 }
 
+export interface OperationalEvent {
+  id: string;
+  type: string;
+  title: string;
+  status: 'success' | 'warning' | 'error' | 'info';
+  message?: string;
+  source?: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: Timestamp;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

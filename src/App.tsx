@@ -13,6 +13,7 @@ import {
   Bill,
   Sale,
   PromokitLead,
+  OperationalEvent,
   handleFirestoreError, 
   OperationType 
 } from './firebase';
@@ -473,9 +474,14 @@ const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: st
   { key: 'recovery', title: 'Recuperação', description: 'Ofertas e abordagem para clientes parados.', placeholder: 'Ex: Clientes sem compra há 15 dias recebem sugestão de kit semanal...' },
 ];
 
-type AppTab = 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'campanhas' | 'fluxos' | 'assistenteCampanhas' | 'whatsapp';
+type AppTab = 'operacao' | 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'campanhas' | 'fluxos' | 'assistenteCampanhas' | 'whatsapp';
 
 const tabMeta: Record<AppTab, { label: string; title: string; description: string }> = {
+  operacao: {
+    label: 'Central Operacional',
+    title: 'Central Operacional',
+    description: 'Acompanhe pedidos, automações, estoque crítico e pontos que precisam de atenção.',
+  },
   dashboard: {
     label: 'Dashboard',
     title: 'Visão geral',
@@ -569,7 +575,7 @@ export default function App() {
   const [kits, setKits] = useState<Kit[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   
-  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<AppTab>('operacao');
   const [whatsappEnvironment, setWhatsappEnvironment] = useState<WhatsAppEnvironment>('dashboard');
   const [whatsappConfigTab, setWhatsappConfigTab] = useState<WhatsAppConfigTab>('agentes');
   const [editingWhatsappAgent, setEditingWhatsappAgent] = useState<string | null>(null);
@@ -584,6 +590,7 @@ export default function App() {
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(defaultWhatsappCampaigns[0].id);
   const [selectedFlowCampaignId, setSelectedFlowCampaignId] = useState(defaultWhatsappCampaigns[0].id);
   const [whatsappLeads, setWhatsappLeads] = useState<PromokitLead[]>([]);
+  const [operationalEvents, setOperationalEvents] = useState<OperationalEvent[]>([]);
   const [selectedAgentKnowledge, setSelectedAgentKnowledge] = useState(defaultWhatsappAgents[1].name);
   const [isRunningAutomations, setIsRunningAutomations] = useState(false);
   const [automationResult, setAutomationResult] = useState<any | null>(null);
@@ -750,6 +757,11 @@ export default function App() {
       setWhatsappLeads(leads);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'promokit_customers'));
 
+    const unsubOperationalEvents = onSnapshot(query(collection(db, 'operational_events'), orderBy('createdAt', 'desc')), (snapshot) => {
+      const events = snapshot.docs.slice(0, 30).map(doc => ({ id: doc.id, ...doc.data() } as OperationalEvent));
+      setOperationalEvents(events);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'operational_events'));
+
     return () => {
       unsubProducts();
       unsubMovements();
@@ -760,6 +772,7 @@ export default function App() {
       unsubSales();
       unsubWhatsappAiConfig();
       unsubPromokitLeads();
+      unsubOperationalEvents();
     };
   }, [user]);
 
@@ -1504,8 +1517,56 @@ export default function App() {
       return date && date >= startOfMonth(new Date()) && date <= endOfMonth(new Date());
     })
     .reduce((acc, s) => acc + s.value, 0);
+  const today = new Date();
+  const lowStockItems = stock
+    .filter(item => item.currentStock <= 10)
+    .sort((a, b) => a.currentStock - b.currentStock);
+  const outOfStockItems = stock.filter(item => item.currentStock <= 0);
+  const salesToday = sales.filter(sale => {
+    const date = sale.saleDate?.toDate();
+    return date ? isSameDay(date, today) : false;
+  });
+  const promokitSalesToday = salesToday.filter(sale => sale.source === 'promokit');
+  const recentPromokitSales = sales.filter(sale => sale.source === 'promokit').slice(0, 5);
+  const stalledLeads = whatsappLeads.filter(lead => {
+    if (!lead.lastOrderAt) return false;
+    const date = new Date(lead.lastOrderAt);
+    if (Number.isNaN(date.getTime())) return false;
+    return date < subDays(today, 15);
+  });
+  const activeCampaigns = whatsappCampaigns.filter(campaign => campaign.status === 'Finalizada' || campaign.status === 'Pausada');
+  const readyCampaigns = whatsappCampaigns.filter(campaign => campaign.status === 'Finalizada');
+  const campaignKnowledgeMissing = whatsappCampaigns.filter(campaign =>
+    campaign.status !== 'Rascunho' && !campaign.campaignKnowledge.trim()
+  );
+  const pendingHumanConversations = whatsappConversations.filter(conversation => conversation.score < 50);
+  const latestOperationalEvents = operationalEvents.slice(0, 8);
+  const operationalWarnings = [
+    ...outOfStockItems.slice(0, 3).map(item => ({
+      title: `${item.name} sem estoque`,
+      description: 'Evite vender esse item e cadastre produção ou substituição.',
+      icon: AlertTriangle,
+      color: 'text-red-600',
+      bg: 'bg-red-50',
+    })),
+    ...campaignKnowledgeMissing.slice(0, 2).map(campaign => ({
+      title: `${campaign.name} sem base da campanha`,
+      description: 'Inclua cupom, regra, link e contexto para o assistente responder certo.',
+      icon: Megaphone,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+    })),
+    ...pendingHumanConversations.slice(0, 2).map(conversation => ({
+      title: `${conversation.customer} pode precisar de humano`,
+      description: `${conversation.intent} com confiança ${conversation.score}%.`,
+      icon: Headphones,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+    })),
+  ];
   const getTabIcon = (tab: AppTab) => {
     const iconProps = { size: 18 };
+    if (tab === 'operacao') return <Zap {...iconProps} />;
     if (tab === 'dashboard') return <LayoutDashboard {...iconProps} />;
     if (tab === 'estoque') return <Package {...iconProps} />;
     if (tab === 'producao') return <Plus {...iconProps} />;
@@ -1603,7 +1664,7 @@ export default function App() {
             id: 'dashboard',
             label: 'Dashboard',
             icon: LayoutDashboard,
-            tabs: ['dashboard', 'vendas'],
+            tabs: ['operacao', 'dashboard', 'vendas'],
           })}
 
           {renderNavGroup({
@@ -1689,6 +1750,179 @@ export default function App() {
         )}
 
         <AnimatePresence mode="wait">
+          {activeTab === 'operacao' && (
+            <motion.div
+              key="operacao"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {[
+                  { label: 'Pedidos hoje', value: salesToday.length, note: `${promokitSalesToday.length} via Promokit`, icon: ShoppingCart, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: 'Estoque crítico', value: lowStockItems.length, note: `${outOfStockItems.length} zerado(s)`, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+                  { label: 'Leads parados', value: stalledLeads.length, note: '15+ dias sem compra', icon: UserPlus, color: 'text-amber-600', bg: 'bg-amber-50' },
+                  { label: 'Campanhas prontas', value: readyCampaigns.length, note: `${activeCampaigns.length} ativa(s)/pausada(s)`, icon: Megaphone, color: 'text-blue-600', bg: 'bg-blue-50' },
+                ].map(card => (
+                  <div key={card.label} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <div className={`p-3 rounded-2xl ${card.bg} shrink-0`}>
+                      <card.icon className={card.color} size={24} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 truncate">{card.label}</p>
+                      <p className={`text-2xl font-black mt-1 ${card.color}`}>{card.value}</p>
+                      <p className="text-xs text-gray-500 mt-1 truncate">{card.note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.95fr] gap-6">
+                <div className="space-y-6">
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="text-xl font-black text-gray-900">Prioridades de hoje</h2>
+                        <p className="text-sm text-gray-500 mt-1">Pontos que merecem atenção antes de deixar a automação seguir sozinha.</p>
+                      </div>
+                      <button
+                        onClick={() => selectTab('vendas')}
+                        className="hidden sm:flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-colors"
+                      >
+                        <RefreshCcw size={16} />
+                        Ver pedidos
+                      </button>
+                    </div>
+
+                    {operationalWarnings.length === 0 ? (
+                      <div className="p-8 text-center rounded-3xl bg-emerald-50 border border-emerald-100">
+                        <CheckCircle2 className="mx-auto text-emerald-600 mb-3" size={34} />
+                        <p className="font-black text-emerald-900">Nenhuma prioridade crítica agora.</p>
+                        <p className="text-sm text-emerald-700 mt-1">Acompanhe pedidos, campanhas e estoque pelos painéis abaixo.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {operationalWarnings.map((warning, index) => (
+                          <div key={`${warning.title}-${index}`} className="flex items-start gap-3 p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                            <div className={`p-2 rounded-xl ${warning.bg} shrink-0`}>
+                              <warning.icon className={warning.color} size={18} />
+                            </div>
+                            <div>
+                              <p className="font-black text-gray-900">{warning.title}</p>
+                              <p className="text-sm text-gray-500 mt-1">{warning.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="text-xl font-black text-gray-900">Últimos pedidos Promokit</h2>
+                        <p className="text-sm text-gray-500 mt-1">Use para conferir se a sincronização está mantendo a operação em dia.</p>
+                      </div>
+                      <button
+                        disabled={isSyncingPromokit}
+                        onClick={() => handleSyncPromokitOrders()}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-2xl text-sm font-bold hover:bg-gray-800 transition-colors disabled:opacity-50"
+                      >
+                        {isSyncingPromokit ? <Loader2 className="animate-spin" size={16} /> : <RefreshCcw size={16} />}
+                        Sincronizar
+                      </button>
+                    </div>
+
+                    {recentPromokitSales.length === 0 ? (
+                      <div className="p-8 rounded-3xl border-2 border-dashed border-gray-200 text-center">
+                        <ShoppingCart className="mx-auto text-gray-300 mb-3" size={34} />
+                        <p className="font-bold text-gray-500">Nenhum pedido Promokit sincronizado ainda.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-gray-100">
+                        {recentPromokitSales.map(sale => (
+                          <div key={sale.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-black text-gray-900">{sale.customerName}</p>
+                                <span className="text-[10px] font-black uppercase bg-lime-50 text-lime-700 border border-lime-100 px-2 py-1 rounded-lg">
+                                  #{getSaleOrderNumber(sale)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-500 mt-1 line-clamp-1">{sale.itemsDescription}</p>
+                            </div>
+                            <div className="text-left sm:text-right">
+                              <p className="text-sm font-black text-emerald-600">R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                              <p className="text-xs text-gray-400">{sale.saleDate?.toDate().toLocaleDateString('pt-BR')}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h2 className="text-xl font-black text-gray-900">Saúde da automação</h2>
+                    <div className="mt-5 space-y-3">
+                      {[
+                        { label: 'Promokit', value: recentPromokitSales.length ? 'Recebendo pedidos' : 'Aguardando pedidos', status: recentPromokitSales.length ? 'ok' : 'warn' },
+                        { label: 'WhatsApp IA', value: whatsappAgentConfigs.some(agent => agent.enabled) ? 'Agentes ativos' : 'Sem agentes ativos', status: whatsappAgentConfigs.some(agent => agent.enabled) ? 'ok' : 'warn' },
+                        { label: 'Campanhas', value: readyCampaigns.length ? 'Prontas para disparo' : 'Sem campanha finalizada', status: readyCampaigns.length ? 'ok' : 'warn' },
+                        { label: 'Estoque', value: outOfStockItems.length ? 'Itens zerados' : 'Sem ruptura crítica', status: outOfStockItems.length ? 'error' : 'ok' },
+                      ].map(item => (
+                        <div key={item.label} className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gray-50">
+                          <div>
+                            <p className="text-sm font-black text-gray-900">{item.label}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{item.value}</p>
+                          </div>
+                          <span className={`w-3 h-3 rounded-full ${
+                            item.status === 'ok' ? 'bg-emerald-500' :
+                            item.status === 'error' ? 'bg-red-500' :
+                            'bg-amber-400'
+                          }`} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h2 className="text-xl font-black text-gray-900">Eventos recentes</h2>
+                    <p className="text-sm text-gray-500 mt-1">Histórico técnico das rotinas automáticas.</p>
+                    <div className="mt-5 space-y-3">
+                      {latestOperationalEvents.length === 0 ? (
+                        <div className="p-6 rounded-3xl bg-gray-50 text-center">
+                          <Activity className="mx-auto text-gray-300 mb-3" size={30} />
+                          <p className="text-sm font-bold text-gray-500">Nenhum evento registrado ainda.</p>
+                        </div>
+                      ) : (
+                        latestOperationalEvents.map(event => (
+                          <div key={event.id} className="flex gap-3">
+                            <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
+                              event.status === 'success' ? 'bg-emerald-500' :
+                              event.status === 'error' ? 'bg-red-500' :
+                              event.status === 'warning' ? 'bg-amber-400' :
+                              'bg-blue-500'
+                            }`} />
+                            <div className="min-w-0">
+                              <p className="text-sm font-black text-gray-900 truncate">{event.title}</p>
+                              {event.message && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{event.message}</p>}
+                              <p className="text-[10px] uppercase font-black text-gray-400 mt-1">
+                                {event.source || 'sistema'} · {event.createdAt?.toDate ? event.createdAt.toDate().toLocaleString('pt-BR') : 'agora'}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {activeTab === 'dashboard' && (
             <motion.div
               key="dashboard"

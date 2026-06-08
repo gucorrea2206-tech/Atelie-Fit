@@ -3,6 +3,7 @@ import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
 import { buildCampaignContext, saveCampaignContext } from "../_lib/campaignContext.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
+import { logOperationalEvent } from "../_lib/operationalEvents.js";
 
 type Recipient = {
   remoteJid?: string;
@@ -84,6 +85,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    await logOperationalEvent(db, {
+      type: "campaign_send",
+      title: dryRun ? "Campanha simulada" : "Campanha disparada",
+      status: skipped.length ? "warning" : "success",
+      source: "whatsapp",
+      entityId: campaignId,
+      message: `${sent.length} contato(s) processado(s), ${skipped.length} pulado(s).`,
+      metadata: {
+        dryRun,
+        campaignId,
+        campaignName: campaign.name,
+        sentCount: sent.length,
+        skippedCount: skipped.length,
+        skipped,
+      },
+    });
+
     return res.status(200).json({
       ok: true,
       dryRun,
@@ -109,6 +127,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     campaignId: campaignContext?.campaignId || "",
     campaignName: campaignContext?.campaignName || "",
     createdAt: new Date().toISOString(),
+  });
+
+  await logOperationalEvent(db, {
+    type: "whatsapp_manual_send",
+    title: campaign ? "Mensagem com contexto de campanha enviada" : "Mensagem WhatsApp enviada",
+    status: "success",
+    source: "whatsapp",
+    entityId: remoteJid,
+    message: campaign ? `Campanha: ${campaign.name}` : "Envio manual registrado.",
+    metadata: {
+      remoteJid,
+      campaignId: campaign?.id || "",
+      campaignName: campaign?.name || "",
+    },
   });
 
   return res.status(200).json({ ok: true, result, campaignContext });

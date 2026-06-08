@@ -5,6 +5,7 @@ import { decideAgentReply } from "../_lib/openai.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
 import { getActiveCampaignContext, markCampaignContextResponded } from "../_lib/campaignContext.js";
+import { logOperationalEvent } from "../_lib/operationalEvents.js";
 
 export const config = {
   maxDuration: 60,
@@ -126,10 +127,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    await logOperationalEvent(db, {
+      type: "whatsapp_message",
+      title: activeCampaignContext ? "Resposta de campanha processada" : "Mensagem WhatsApp processada",
+      status: sendStatus === "failed" ? "warning" : "success",
+      source: "whatsapp",
+      entityId: normalized.remoteJid,
+      message: `${decision.agent} · ${decision.intent}${sendStatus === "failed" ? ` · envio falhou: ${sendError}` : ""}`,
+      metadata: {
+        remoteJid: normalized.remoteJid,
+        pushName: normalized.pushName,
+        campaignId: activeCampaignContext?.campaignId || "",
+        campaignName: activeCampaignContext?.campaignName || "",
+        decision,
+        sendStatus,
+      },
+    });
+
     return res.status(200).json({ ok: true, decision, sendStatus, sendError });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown webhook error";
     console.error("WhatsApp webhook failed", { error: message });
+    await logOperationalEvent(getAdminDb(), {
+      type: "whatsapp_webhook",
+      title: "Falha no webhook do WhatsApp",
+      status: "error",
+      source: "whatsapp",
+      message,
+    });
     return res.status(500).json({ ok: false, error: message });
   }
 }

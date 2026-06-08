@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
 import { sendWhatsAppText } from "../_lib/evolution.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
+import { logOperationalEvent } from "../_lib/operationalEvents.js";
 
 type AutomationConfig = {
   id: string;
@@ -50,14 +51,24 @@ function isInactiveEnough(days: number | null, triggerDays: number) {
   return days !== null && days >= triggerDays;
 }
 
+function isAuthorizedCron(req: VercelRequest) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  return req.headers.authorization === `Bearer ${secret}`;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
+  if (!["GET", "POST"].includes(req.method || "")) {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  if (req.method === "GET" && !isAuthorizedCron(req)) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
   try {
     const db = getAdminDb();
-    const input = req.body || {};
+    const input = req.method === "POST" ? req.body || {} : req.query || {};
     const dryRun = input.dryRun !== false;
     const config = await getWhatsappAiConfig();
     const automations: AutomationConfig[] = Array.isArray(input.automations) ? input.automations : config.automations;
@@ -120,6 +131,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    await logOperationalEvent(db, {
+      type: "whatsapp_automations",
+      title: dryRun ? "Automações simuladas" : "Automações executadas",
+      status: candidates.length || operationalActions.length ? "info" : "success",
+      source: "whatsapp",
+      message: `${candidates.length} candidato(s), ${operationalActions.length} ação(ões) operacional(is), ${sent.length} envio(s).`,
+      metadata: {
+        dryRun,
+        candidateCount: candidates.length,
+        operationalActionCount: operationalActions.length,
+        sentCount: sent.length,
+      },
+    });
+
     return res.status(200).json({
       ok: true,
       dryRun,
@@ -131,6 +156,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "WhatsApp automations failed";
     console.error("WhatsApp automations failed", { error: message });
+    await logOperationalEvent(getAdminDb(), {
+      type: "whatsapp_automations",
+      title: "Falha nas automações do WhatsApp",
+      status: "error",
+      source: "whatsapp",
+      message,
+    });
     return res.status(500).json({ ok: false, error: message });
   }
 }
