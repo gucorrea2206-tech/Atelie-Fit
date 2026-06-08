@@ -1,5 +1,5 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import type { QuerySnapshot } from "firebase-admin/firestore";
+import type { DocumentReference, QuerySnapshot } from "firebase-admin/firestore";
 import { getAdminDb } from "./firebaseAdmin.js";
 import { createOperationalJson } from "./operationsOpenai.js";
 import { logOperationalEvent } from "./operationalEvents.js";
@@ -41,6 +41,10 @@ type ProcessOrderResult = {
   createdSale: boolean;
   movementCount: number;
   syncedProductCount: number;
+};
+
+type ProcessOrderOptions = {
+  forceReprocess?: boolean;
 };
 
 function normalizeText(value: string) {
@@ -558,20 +562,53 @@ async function saleAlreadyExists(code: string) {
   return processedSaleId ? String(processedSaleId) : null;
 }
 
-export async function processPromokitOrder(order: any): Promise<ProcessOrderResult | null> {
+async function deleteExistingPromokitSale(code: string) {
+  const db = getAdminDb();
+  const salesSnapshot = await db.collection("sales").where("promokitOrderCode", "==", code).get();
+  const movementsByOrder = await db.collection("movements").where("promokitOrderCode", "==", code).get();
+  const saleIds = new Set(salesSnapshot.docs.map((doc) => doc.ref.id));
+  const movementRefs = new Map<string, DocumentReference>();
+
+  movementsByOrder.docs.forEach((doc) => movementRefs.set(doc.ref.path, doc.ref));
+
+  for (const saleId of saleIds) {
+    const movementsBySale = await db.collection("movements").where("saleId", "==", saleId).get();
+    movementsBySale.docs.forEach((doc) => movementRefs.set(doc.ref.path, doc.ref));
+  }
+
+  const batch = db.batch();
+  salesSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  movementRefs.forEach((ref) => batch.delete(ref));
+  batch.set(
+    db.collection("promokit_orders").doc(code),
+    {
+      processedSaleId: null,
+      processingStatus: "reprocessing",
+      reprocessedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  await batch.commit();
+}
+
+export async function processPromokitOrder(order: any, options: ProcessOrderOptions = {}): Promise<ProcessOrderResult | null> {
   const db = getAdminDb();
   const code = getOrderCode(order);
   if (!code) return null;
 
-  const existingSaleId = await saleAlreadyExists(code);
-  if (existingSaleId) {
-    return {
-      code,
-      saleId: existingSaleId,
-      createdSale: false,
-      movementCount: 0,
-      syncedProductCount: 0,
-    };
+  if (options.forceReprocess) {
+    await deleteExistingPromokitSale(code);
+  } else {
+    const existingSaleId = await saleAlreadyExists(code);
+    if (existingSaleId) {
+      return {
+        code,
+        saleId: existingSaleId,
+        createdSale: false,
+        movementCount: 0,
+        syncedProductCount: 0,
+      };
+    }
   }
 
   if (order?.cancelado || String(order?.status || "").toLowerCase() === "cancelado") {
@@ -764,6 +801,56 @@ export async function processPromokitOrder(order: any): Promise<ProcessOrderResu
           });
         }
       }
+      continue;
+    }
+
+    if (isCustomKitLineItem(lineItem)) {
+      const aiInterpretation = await interpretKitDetailsWithAi({ lineItem, kitItems: [], productsSnapshot });
+      const aiSelectedProducts = resolveAiSelectedProducts(aiInterpretation, lineItem, productsSnapshot);
+
+      if (aiSelectedProducts.length > 0) {
+        for (const selectedProduct of aiSelectedProducts) {
+          const quantity = selectedProduct.quantity * lineItem.quantity;
+          if (!selectedProduct.productId || quantity <= 0) continue;
+
+          const movementRef = db.collection("movements").doc();
+          batch.set(movementRef, {
+            productId: selectedProduct.productId,
+            type: "saida",
+            quantity,
+            referenceDate: saleDate,
+            createdAt: FieldValue.serverTimestamp(),
+            saleId: saleRef.id,
+            source: "promokit",
+            recognitionSource: "ai_kit_observation",
+            promokitOrderCode: code,
+            promokitItemId: lineItem.promokitItemId || null,
+            promokitProductId: lineItem.promokitProductId || null,
+            promokitSelectedName: selectedProduct.name,
+            promokitDetails: lineItem.detailsText || null,
+            aiReason: aiInterpretation.reason,
+          });
+          movementCount += 1;
+          totalQuantity += quantity;
+        }
+      } else {
+        needsReview = true;
+        await logOperationalEvent(db, {
+          type: "promokit_custom_kit_without_local_match",
+          title: `Pedido #${code} com Monte seu Kit sem marmitas claras`,
+          status: "warning",
+          source: "promokit",
+          entityId: code,
+          message: `${lineItem.name} nao casou com um kit local e nao trouxe marmitas claras. A venda foi registrada sem criar produto falso no estoque.`,
+          metadata: {
+            itemName: lineItem.name,
+            quantity: lineItem.quantity,
+            detailsText: lineItem.detailsText || null,
+            aiReason: aiInterpretation.reason,
+          },
+        });
+      }
+      syncedProductCount += 1;
       continue;
     }
 

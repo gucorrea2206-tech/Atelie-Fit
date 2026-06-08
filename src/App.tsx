@@ -634,6 +634,7 @@ export default function App() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [newSale, setNewSale] = useState({ customerName: '', value: '', saleDate: format(new Date(), 'yyyy-MM-dd') });
   const [isSyncingPromokit, setIsSyncingPromokit] = useState(false);
+  const [reprocessingOrderCode, setReprocessingOrderCode] = useState<string | null>(null);
   const [expandedSaleDetails, setExpandedSaleDetails] = useState<Record<string, boolean>>({});
   const [promokitLastOrderCode, setPromokitLastOrderCode] = useState('');
   const [promokitSyncResult, setPromokitSyncResult] = useState<{
@@ -898,6 +899,40 @@ export default function App() {
       setError(err.message || 'Erro ao sincronizar leads da Promokit.');
     } finally {
       setIsSyncingPromokit(false);
+    }
+  };
+
+  const handleReprocessPromokitOrder = async (sale: Sale) => {
+    const orderCode = getSaleOrderNumber(sale);
+    if (!orderCode) return;
+    setReprocessingOrderCode(orderCode);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/promokit/reprocess-order', {
+        method: 'POST',
+        headers: await getAuthenticatedHeaders(),
+        body: JSON.stringify({ orderCode }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Erro ao reprocessar pedido da Promokit.');
+      }
+
+      if (data.processResult) {
+        setPromokitSyncResult({
+          count: 1,
+          savedCodes: [orderCode],
+          processedSales: [data.processResult],
+          nextLastOrderCode: orderCode,
+        });
+        setExpandedSaleDetails(current => ({ ...current, [data.processResult.saleId || sale.id]: true }));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erro ao reprocessar pedido da Promokit.');
+    } finally {
+      setReprocessingOrderCode(null);
     }
   };
 
@@ -2850,7 +2885,24 @@ export default function App() {
                               <div className="border-t border-gray-100 pt-4">
                                 <div className="flex items-center justify-between gap-3 mb-3">
                                   <h4 className="text-sm font-black text-gray-900">Marmitas do pedido</h4>
-                                  <span className="text-xs font-bold text-gray-400">{sale.totalQuantity || saleMovements.length} un no registro</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-gray-400">{sale.totalQuantity || saleMovements.length} un no registro</span>
+                                    {sale.source === 'promokit' && (
+                                      <button
+                                        type="button"
+                                        disabled={reprocessingOrderCode === getSaleOrderNumber(sale)}
+                                        onClick={() => handleReprocessPromokitOrder(sale)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 text-xs font-black hover:bg-emerald-100 transition-colors disabled:opacity-60"
+                                      >
+                                        {reprocessingOrderCode === getSaleOrderNumber(sale) ? (
+                                          <Loader2 size={13} className="animate-spin" />
+                                        ) : (
+                                          <RefreshCcw size={13} />
+                                        )}
+                                        Reprocessar
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {saleMovements.length === 0 ? (
