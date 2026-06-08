@@ -602,6 +602,7 @@ export default function App() {
   const [campaignQueueResult, setCampaignQueueResult] = useState<any | null>(null);
   const [campaignSchedule, setCampaignSchedule] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [campaignAudienceSegment, setCampaignAudienceSegment] = useState<CampaignAudienceSegment>('parados15');
+  const [operationalEventFilter, setOperationalEventFilter] = useState<'todos' | 'error' | 'warning'>('todos');
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
@@ -1635,6 +1636,44 @@ export default function App() {
   );
   const pendingHumanConversations = whatsappConversations.filter(conversation => conversation.score < 50);
   const latestOperationalEvents = operationalEvents.slice(0, 8);
+  const operationalIssueEvents = operationalEvents
+    .filter(event => operationalEventFilter === 'todos' ? ['error', 'warning'].includes(event.status) : event.status === operationalEventFilter)
+    .slice(0, 10);
+  const operationalIssueCounts = {
+    error: operationalEvents.filter(event => event.status === 'error').length,
+    warning: operationalEvents.filter(event => event.status === 'warning').length,
+  };
+  const productionRecommendations = stock
+    .map(item => {
+      const soldLast7Days = movements
+        .filter(movement => {
+          const date = movement.referenceDate?.toDate?.() || movement.createdAt?.toDate?.();
+          return movement.productId === item.id && movement.type === 'saida' && date && date >= subDays(today, 7);
+        })
+        .reduce((acc, movement) => acc + Number(movement.quantity || 0), 0);
+      const averageDailySales = soldLast7Days / 7;
+      const targetStock = Math.max(8, Math.ceil(averageDailySales * 7));
+      const suggestedProduction = Math.max(0, targetStock - item.currentStock);
+      const urgency =
+        item.currentStock <= 0 ? 'alta' :
+        item.currentStock <= Math.max(3, averageDailySales * 2) ? 'media' :
+        'baixa';
+
+      return {
+        ...item,
+        soldLast7Days,
+        averageDailySales,
+        targetStock,
+        suggestedProduction,
+        urgency,
+      };
+    })
+    .filter(item => item.suggestedProduction > 0 || item.currentStock <= 5)
+    .sort((a, b) => {
+      const urgencyScore = { alta: 3, media: 2, baixa: 1 };
+      return urgencyScore[b.urgency as keyof typeof urgencyScore] - urgencyScore[a.urgency as keyof typeof urgencyScore] || b.suggestedProduction - a.suggestedProduction;
+    })
+    .slice(0, 8);
   const selectedCampaignQueue = selectedCampaign
     ? campaignQueue.filter(item => item.campaignId === selectedCampaign.id)
     : [];
@@ -2029,6 +2068,128 @@ export default function App() {
                             <div className="text-left sm:text-right">
                               <p className="text-sm font-black text-emerald-600">R$ {sale.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                               <p className="text-xs text-gray-400">{sale.saleDate?.toDate().toLocaleDateString('pt-BR')}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="text-xl font-black text-gray-900">Erros operacionais</h2>
+                        <p className="text-sm text-gray-500 mt-1">Falhas e alertas gerados por Promokit, WhatsApp, campanhas e automações.</p>
+                      </div>
+                      <div className="flex p-1 bg-gray-100 rounded-2xl">
+                        {[
+                          ['todos', `Todos ${operationalIssueCounts.error + operationalIssueCounts.warning}`],
+                          ['error', `Erros ${operationalIssueCounts.error}`],
+                          ['warning', `Alertas ${operationalIssueCounts.warning}`],
+                        ].map(([id, label]) => (
+                          <button
+                            key={id}
+                            onClick={() => setOperationalEventFilter(id as 'todos' | 'error' | 'warning')}
+                            className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                              operationalEventFilter === id ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {operationalIssueEvents.length === 0 ? (
+                      <div className="p-8 rounded-3xl bg-emerald-50 border border-emerald-100 text-center">
+                        <CheckCircle2 className="mx-auto text-emerald-600 mb-3" size={34} />
+                        <p className="font-black text-emerald-900">Sem erros operacionais no filtro atual.</p>
+                        <p className="text-sm text-emerald-700 mt-1">Quando uma rotina falhar, ela aparece aqui com origem e contexto.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {operationalIssueEvents.map(event => (
+                          <div key={event.id} className={`p-4 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${
+                            event.status === 'error' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'
+                          }`}>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${
+                                  event.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {event.status === 'error' ? 'erro' : 'alerta'}
+                                </span>
+                                <span className="text-[10px] font-black uppercase text-gray-400">{event.source || 'sistema'}</span>
+                              </div>
+                              <p className="font-black text-gray-900 mt-2">{event.title}</p>
+                              {event.message && <p className="text-sm text-gray-600 mt-1 line-clamp-2">{event.message}</p>}
+                              <p className="text-[10px] font-black uppercase text-gray-400 mt-2">
+                                {event.createdAt?.toDate ? event.createdAt.toDate().toLocaleString('pt-BR') : 'sem data'}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (event.type.includes('promokit')) selectTab('vendas');
+                                else if (event.type.includes('campaign')) selectTab('campanhas');
+                                else if (event.type.includes('whatsapp')) {
+                                  selectTab('whatsapp');
+                                  setWhatsappEnvironment('dashboard');
+                                } else selectTab('operacao');
+                              }}
+                              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-gray-700 rounded-2xl text-sm font-black border border-white hover:border-gray-200 transition-all"
+                            >
+                              Abrir área
+                              <ChevronRight size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="text-xl font-black text-gray-900">Produção sugerida</h2>
+                        <p className="text-sm text-gray-500 mt-1">Sugestão baseada no estoque atual e saídas dos últimos 7 dias.</p>
+                      </div>
+                      <button
+                        onClick={() => selectTab('producao')}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-colors"
+                      >
+                        <Plus size={16} />
+                        Registrar produção
+                      </button>
+                    </div>
+
+                    {productionRecommendations.length === 0 ? (
+                      <div className="p-8 rounded-3xl bg-emerald-50 border border-emerald-100 text-center">
+                        <CheckCircle2 className="mx-auto text-emerald-600 mb-3" size={34} />
+                        <p className="font-black text-emerald-900">Estoque confortável agora.</p>
+                        <p className="text-sm text-emerald-700 mt-1">Nenhuma produção urgente pelos critérios atuais.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {productionRecommendations.map(item => (
+                          <div key={item.id} className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-black text-gray-900">{item.name}</p>
+                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${
+                                  item.urgency === 'alta' ? 'bg-red-100 text-red-700' :
+                                  item.urgency === 'media' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {item.urgency}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-500 mt-1">
+                                Estoque {item.currentStock} un · saiu {item.soldLast7Days} un em 7 dias · meta {item.targetStock} un
+                              </p>
+                            </div>
+                            <div className="text-left md:text-right">
+                              <p className="text-xs font-black uppercase text-gray-400">Produzir</p>
+                              <p className="text-2xl font-black text-emerald-600">{item.suggestedProduction} un</p>
                             </div>
                           </div>
                         ))}
