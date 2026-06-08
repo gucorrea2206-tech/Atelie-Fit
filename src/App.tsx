@@ -1660,6 +1660,8 @@ export default function App() {
       movement.source === 'promokit' &&
       (
         movement.recognitionSource === 'local_kit_composition' ||
+        movement.recognitionSource === 'ai_kit_observation' ||
+        movement.recognitionSource === 'ai_kit_substitution' ||
         !products.some(product => product.id === movement.productId)
       )
     )
@@ -1727,7 +1729,11 @@ export default function App() {
       title: `Revisar baixa do pedido #${movement.promokitOrderCode || '-'}`,
       description: movement.recognitionSource === 'local_kit_composition'
         ? 'Kit baixado pela composição local porque a escolha da Promokit não veio clara.'
-        : 'Produto da baixa não foi encontrado no cardápio local.',
+        : movement.recognitionSource === 'ai_kit_observation'
+          ? 'Kit personalizado baixado pela leitura da IA sobre as escolhas do pedido.'
+          : movement.recognitionSource === 'ai_kit_substitution'
+            ? 'Kit baixado com troca interpretada pela IA nas observações.'
+            : 'Produto da baixa não foi encontrado no cardápio local.',
       icon: Package,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
@@ -2190,8 +2196,15 @@ export default function App() {
                                 <p className="text-sm text-amber-800 mt-1">
                                   {movement.quantity} un · {movement.recognitionSource === 'local_kit_composition'
                                     ? 'baixado pela composição local do kit'
+                                    : movement.recognitionSource === 'ai_kit_observation'
+                                      ? 'baixado pela IA a partir das escolhas do kit'
+                                      : movement.recognitionSource === 'ai_kit_substitution'
+                                        ? 'baixa com troca interpretada pela IA'
                                     : 'baixa sem correspondência clara no cardápio'}
                                 </p>
+                                {movement.promokitDetails && (
+                                  <p className="text-xs text-amber-700 mt-1 line-clamp-2">{movement.promokitDetails}</p>
+                                )}
                               </div>
                               <span className="text-[10px] font-black uppercase text-amber-700 bg-white px-3 py-1.5 rounded-xl self-start md:self-auto">
                                 revisar
