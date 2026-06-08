@@ -45,6 +45,8 @@ export interface Movement {
   promokitOrderCode?: string;
   promokitItemId?: string | null;
   promokitProductId?: string | null;
+  recognitionSource?: string;
+  promokitSelectedName?: string;
   referenceDate?: Timestamp;
   createdAt: Timestamp;
 }

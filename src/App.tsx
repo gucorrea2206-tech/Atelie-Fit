@@ -1613,6 +1613,15 @@ export default function App() {
   const readyCampaigns = whatsappCampaigns.filter(campaign => campaign.status === 'Finalizada');
   const pendingCampaignQueue = campaignQueue.filter(item => item.status === 'pending');
   const failedCampaignQueue = campaignQueue.filter(item => item.status === 'failed');
+  const stockReviewMovements = movements
+    .filter(movement =>
+      movement.source === 'promokit' &&
+      (
+        movement.recognitionSource === 'local_kit_composition' ||
+        !products.some(product => product.id === movement.productId)
+      )
+    )
+    .slice(0, 8);
   const campaignKnowledgeMissing = whatsappCampaigns.filter(campaign =>
     campaign.status !== 'Rascunho' && !campaign.campaignKnowledge.trim()
   );
@@ -1710,6 +1719,15 @@ export default function App() {
       icon: Send,
       color: 'text-red-600',
       bg: 'bg-red-50',
+    })),
+    ...stockReviewMovements.slice(0, 2).map(movement => ({
+      title: `Revisar baixa do pedido #${movement.promokitOrderCode || '-'}`,
+      description: movement.recognitionSource === 'local_kit_composition'
+        ? 'Kit baixado pela composição local porque a escolha da Promokit não veio clara.'
+        : 'Produto da baixa não foi encontrado no cardápio local.',
+      icon: Package,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
     })),
   ];
   const getTabIcon = (tab: AppTab) => {
@@ -2006,6 +2024,56 @@ export default function App() {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+                      <div>
+                        <h2 className="text-xl font-black text-gray-900">Baixas para revisar</h2>
+                        <p className="text-sm text-gray-500 mt-1">Pedidos em que a automação usou uma regra provável para baixar estoque.</p>
+                      </div>
+                      <button
+                        onClick={() => selectTab('historico')}
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-2xl text-sm font-bold hover:bg-gray-200 transition-colors"
+                      >
+                        <History size={16} />
+                        Ver histórico
+                      </button>
+                    </div>
+
+                    {stockReviewMovements.length === 0 ? (
+                      <div className="p-8 rounded-3xl bg-emerald-50 border border-emerald-100 text-center">
+                        <CheckCircle2 className="mx-auto text-emerald-600 mb-3" size={34} />
+                        <p className="font-black text-emerald-900">Nenhuma baixa incerta agora.</p>
+                        <p className="text-sm text-emerald-700 mt-1">Os últimos movimentos da Promokit estão sem alerta de revisão.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {stockReviewMovements.map(movement => {
+                          const product = products.find(item => item.id === movement.productId);
+                          return (
+                            <div key={movement.id} className="p-4 rounded-2xl bg-amber-50 border border-amber-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-black text-amber-950">{product?.name || 'Produto não encontrado'}</p>
+                                  <span className="text-[10px] font-black uppercase text-amber-700 bg-white/70 px-2 py-1 rounded-lg">
+                                    Pedido #{movement.promokitOrderCode || '-'}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-amber-800 mt-1">
+                                  {movement.quantity} un · {movement.recognitionSource === 'local_kit_composition'
+                                    ? 'baixado pela composição local do kit'
+                                    : 'baixa sem correspondência clara no cardápio'}
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-black uppercase text-amber-700 bg-white px-3 py-1.5 rounded-xl self-start md:self-auto">
+                                revisar
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
