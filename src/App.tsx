@@ -34,6 +34,8 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { interpretStockText, AIInterpretation, analyzeBillImage, AIBillItem } from './operationalAi';
+import { buildCampaignAudienceSegments, CampaignAudienceSegment, getLeadInactiveDays } from './campaignAudience';
+import { buildProductionRecommendations } from './productionInsights';
 import { 
   Plus, 
   Minus, 
@@ -476,7 +478,6 @@ const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: st
 ];
 
 type AppTab = 'operacao' | 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'campanhas' | 'fluxos' | 'assistenteCampanhas' | 'whatsapp';
-type CampaignAudienceSegment = 'todos' | 'parados15' | 'parados30' | 'recentes' | 'recorrentes';
 
 const tabMeta: Record<AppTab, { label: string; title: string; description: string }> = {
   operacao: {
@@ -1675,37 +1676,7 @@ export default function App() {
     error: operationalEvents.filter(event => event.status === 'error').length,
     warning: operationalEvents.filter(event => event.status === 'warning').length,
   };
-  const productionRecommendations = stock
-    .map(item => {
-      const soldLast7Days = movements
-        .filter(movement => {
-          const date = movement.referenceDate?.toDate?.() || movement.createdAt?.toDate?.();
-          return movement.productId === item.id && movement.type === 'saida' && date && date >= subDays(today, 7);
-        })
-        .reduce((acc, movement) => acc + Number(movement.quantity || 0), 0);
-      const averageDailySales = soldLast7Days / 7;
-      const targetStock = Math.max(8, Math.ceil(averageDailySales * 7));
-      const suggestedProduction = Math.max(0, targetStock - item.currentStock);
-      const urgency =
-        item.currentStock <= 0 ? 'alta' :
-        item.currentStock <= Math.max(3, averageDailySales * 2) ? 'media' :
-        'baixa';
-
-      return {
-        ...item,
-        soldLast7Days,
-        averageDailySales,
-        targetStock,
-        suggestedProduction,
-        urgency,
-      };
-    })
-    .filter(item => item.suggestedProduction > 0 || item.currentStock <= 5)
-    .sort((a, b) => {
-      const urgencyScore = { alta: 3, media: 2, baixa: 1 };
-      return urgencyScore[b.urgency as keyof typeof urgencyScore] - urgencyScore[a.urgency as keyof typeof urgencyScore] || b.suggestedProduction - a.suggestedProduction;
-    })
-    .slice(0, 8);
+  const productionRecommendations = buildProductionRecommendations(stock, movements, today);
   const selectedCampaignQueue = selectedCampaign
     ? campaignQueue.filter(item => item.campaignId === selectedCampaign.id)
     : [];
@@ -1715,54 +1686,7 @@ export default function App() {
     failed: selectedCampaignQueue.filter(item => item.status === 'failed').length,
     skipped: selectedCampaignQueue.filter(item => item.status === 'skipped').length,
   };
-  const getLeadInactiveDays = (lead: PromokitLead) => {
-    if (!lead.lastOrderAt) return null;
-    const date = new Date(lead.lastOrderAt);
-    if (Number.isNaN(date.getTime())) return null;
-    return Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-  };
-  const leadsWithPhone = whatsappLeads.filter(lead => Boolean(lead.phone));
-  const campaignAudienceSegments: { id: CampaignAudienceSegment; label: string; description: string; leads: PromokitLead[] }[] = [
-    {
-      id: 'parados15',
-      label: 'Parados 15+ dias',
-      description: 'Recuperação leve para quem ficou sem comprar.',
-      leads: leadsWithPhone.filter(lead => {
-        const days = getLeadInactiveDays(lead);
-        return days !== null && days >= 15;
-      }),
-    },
-    {
-      id: 'parados30',
-      label: 'Parados 30+ dias',
-      description: 'Reativação mais forte com cupom ou condição.',
-      leads: leadsWithPhone.filter(lead => {
-        const days = getLeadInactiveDays(lead);
-        return days !== null && days >= 30;
-      }),
-    },
-    {
-      id: 'recentes',
-      label: 'Compraram recente',
-      description: 'Pós-venda, recompra e sugestão da semana.',
-      leads: leadsWithPhone.filter(lead => {
-        const days = getLeadInactiveDays(lead);
-        return days !== null && days <= 14;
-      }),
-    },
-    {
-      id: 'recorrentes',
-      label: 'Clientes recorrentes',
-      description: 'Quem já comprou mais vezes e tende a repetir.',
-      leads: leadsWithPhone.filter(lead => Number(lead.orderCount || 0) >= 2),
-    },
-    {
-      id: 'todos',
-      label: 'Todos com telefone',
-      description: 'Use com cuidado para campanhas amplas.',
-      leads: leadsWithPhone,
-    },
-  ];
+  const campaignAudienceSegments = buildCampaignAudienceSegments(whatsappLeads, today);
   const selectedCampaignAudience = campaignAudienceSegments.find(segment => segment.id === campaignAudienceSegment) || campaignAudienceSegments[0];
   const campaignRecipients = selectedCampaignAudience.leads
     .slice(0, 200)
