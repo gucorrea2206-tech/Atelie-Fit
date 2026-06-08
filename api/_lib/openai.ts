@@ -78,6 +78,14 @@ Entrega: ${knowledge.delivery || "Coletar bairro antes de prometer prazo ou taxa
 Politicas: ${knowledge.policies || "Encaminhar casos sensiveis para humano."}
 Recuperacao: ${knowledge.recovery || "Nao insistir se o cliente recusar."}
 
+Contexto vivo enviado pelo sistema:
+- context.stockSnapshot contem estoque atual calculado pelo sistema, com nome, preco e quantidade.
+- context.availableProducts sao itens com estoque positivo; priorize estes em vendas.
+- context.unavailableProducts sao itens zerados; nao ofereca como disponivel e sugira alternativa proxima.
+- context.customerProfile pode conter nome, telefone, ultimo pedido, total e quantidade de compras.
+- Se houver historico do cliente, use de forma natural para personalizar, sem parecer invasivo.
+- Se estoque ou preco nao estiverem no contexto, diga que vai confirmar antes de fechar.
+
 Assistente de campanhas:
 Nome interno: ${campaignAssistant.name}
 Tom: ${campaignAssistant.tone}
