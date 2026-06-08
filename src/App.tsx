@@ -909,10 +909,10 @@ export default function App() {
     setError(null);
 
     try {
-      const response = await fetch('/api/promokit/reprocess-order', {
+      const response = await fetch('/api/promokit/sync-orders', {
         method: 'POST',
         headers: await getAuthenticatedHeaders(),
-        body: JSON.stringify({ orderCode }),
+        body: JSON.stringify({ action: 'reprocess', orderCode }),
       });
 
       const data = await response.json();

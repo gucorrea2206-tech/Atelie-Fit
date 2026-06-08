@@ -86,6 +86,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const input = req.method === "POST" ? req.body || {} : req.query;
+    const action = String(input.action || "");
+
+    if (action === "reprocess") {
+      const orderCode = String(input.orderCode || input.code || "").trim();
+      if (!orderCode) {
+        return res.status(400).json({ ok: false, error: "orderCode is required" });
+      }
+
+      const db = getAdminDb();
+      const savedOrder = await db.collection("promokit_orders").doc(orderCode).get();
+      const savedData = savedOrder.data();
+      let order = savedData?.raw || null;
+
+      if (!order) {
+        const fetchedOrder = await getPromokitOrder(orderCode);
+        order = fetchedOrder?.data || fetchedOrder;
+      }
+
+      if (!order) {
+        return res.status(404).json({ ok: false, error: "Pedido Promokit nao encontrado." });
+      }
+
+      const processResult = await processPromokitOrder(order, { forceReprocess: true });
+      return res.status(200).json({
+        ok: true,
+        processResult,
+      });
+    }
+
     const lastOrderCode = String(input.lastOrderCode || input.ultimoPedido || "1");
     const take = Number(input.take || input.t || 10);
     const maxPages = Math.max(1, Math.min(Number(input.maxPages || 1), 20));
