@@ -476,6 +476,7 @@ const whatsappKnowledgeSections: { key: keyof WhatsAppKnowledgeConfig; title: st
 ];
 
 type AppTab = 'operacao' | 'dashboard' | 'estoque' | 'producao' | 'vendas' | 'historico' | 'config' | 'compras' | 'contas' | 'campanhas' | 'fluxos' | 'assistenteCampanhas' | 'whatsapp';
+type CampaignAudienceSegment = 'todos' | 'parados15' | 'parados30' | 'recentes' | 'recorrentes';
 
 const tabMeta: Record<AppTab, { label: string; title: string; description: string }> = {
   operacao: {
@@ -600,6 +601,7 @@ export default function App() {
   const [isProcessingCampaignQueue, setIsProcessingCampaignQueue] = useState(false);
   const [campaignQueueResult, setCampaignQueueResult] = useState<any | null>(null);
   const [campaignSchedule, setCampaignSchedule] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+  const [campaignAudienceSegment, setCampaignAudienceSegment] = useState<CampaignAudienceSegment>('parados15');
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
   const [configSubTab, setConfigSubTab] = useState<'produtos' | 'kits' | 'lista'>('produtos');
@@ -1625,8 +1627,56 @@ export default function App() {
     failed: selectedCampaignQueue.filter(item => item.status === 'failed').length,
     skipped: selectedCampaignQueue.filter(item => item.status === 'skipped').length,
   };
-  const campaignRecipients = whatsappLeads
-    .filter(lead => Boolean(lead.phone))
+  const getLeadInactiveDays = (lead: PromokitLead) => {
+    if (!lead.lastOrderAt) return null;
+    const date = new Date(lead.lastOrderAt);
+    if (Number.isNaN(date.getTime())) return null;
+    return Math.floor((today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  };
+  const leadsWithPhone = whatsappLeads.filter(lead => Boolean(lead.phone));
+  const campaignAudienceSegments: { id: CampaignAudienceSegment; label: string; description: string; leads: PromokitLead[] }[] = [
+    {
+      id: 'parados15',
+      label: 'Parados 15+ dias',
+      description: 'Recuperação leve para quem ficou sem comprar.',
+      leads: leadsWithPhone.filter(lead => {
+        const days = getLeadInactiveDays(lead);
+        return days !== null && days >= 15;
+      }),
+    },
+    {
+      id: 'parados30',
+      label: 'Parados 30+ dias',
+      description: 'Reativação mais forte com cupom ou condição.',
+      leads: leadsWithPhone.filter(lead => {
+        const days = getLeadInactiveDays(lead);
+        return days !== null && days >= 30;
+      }),
+    },
+    {
+      id: 'recentes',
+      label: 'Compraram recente',
+      description: 'Pós-venda, recompra e sugestão da semana.',
+      leads: leadsWithPhone.filter(lead => {
+        const days = getLeadInactiveDays(lead);
+        return days !== null && days <= 14;
+      }),
+    },
+    {
+      id: 'recorrentes',
+      label: 'Clientes recorrentes',
+      description: 'Quem já comprou mais vezes e tende a repetir.',
+      leads: leadsWithPhone.filter(lead => Number(lead.orderCount || 0) >= 2),
+    },
+    {
+      id: 'todos',
+      label: 'Todos com telefone',
+      description: 'Use com cuidado para campanhas amplas.',
+      leads: leadsWithPhone,
+    },
+  ];
+  const selectedCampaignAudience = campaignAudienceSegments.find(segment => segment.id === campaignAudienceSegment) || campaignAudienceSegments[0];
+  const campaignRecipients = selectedCampaignAudience.leads
     .slice(0, 200)
     .map(lead => ({
       name: lead.name || 'Cliente',
@@ -3622,6 +3672,47 @@ export default function App() {
                             </div>
                           ))}
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
+                        {campaignAudienceSegments.map(segment => (
+                          <button
+                            key={segment.id}
+                            onClick={() => setCampaignAudienceSegment(segment.id)}
+                            className={`text-left p-3 rounded-2xl border transition-all ${
+                              campaignAudienceSegment === segment.id
+                                ? 'bg-emerald-50 border-emerald-200 ring-2 ring-emerald-100'
+                                : 'bg-white border-gray-100 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-black text-gray-900">{segment.label}</p>
+                              <span className="text-xs font-black text-emerald-600">{segment.leads.length}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-1 leading-snug">{segment.description}</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-black text-gray-900">Público selecionado: {selectedCampaignAudience.label}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {campaignRecipients.length} lead(s) com telefone serão preparados para esta campanha.
+                            </p>
+                          </div>
+                          <p className="text-[10px] font-black uppercase text-gray-400">Limite atual: 200 por preparação</p>
+                        </div>
+                        {selectedCampaignAudience.leads.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedCampaignAudience.leads.slice(0, 6).map(lead => (
+                              <span key={lead.id} className="text-xs font-bold bg-gray-50 text-gray-600 border border-gray-100 px-3 py-1.5 rounded-xl">
+                                {lead.name || 'Cliente'} · {getLeadInactiveDays(lead) ?? '-'}d
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3">
