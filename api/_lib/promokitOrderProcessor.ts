@@ -193,12 +193,84 @@ function rangesOverlap(a: { start: number; end: number }, b: { start: number; en
   return a.start < b.end && b.start < a.end;
 }
 
+function tokenOverlapScore(candidate: string, query: string) {
+  const candidateTokens = normalizeText(candidate).split(" ").filter((token) => token.length > 2);
+  const queryTokens = new Set(normalizeText(query).split(" ").filter((token) => token.length > 2));
+  return candidateTokens.reduce((score, token) => score + (queryTokens.has(token) ? 1 : 0), 0);
+}
+
+function findProductDocBySelectionText(productsSnapshot: QuerySnapshot, selectionText: string) {
+  const selectedName = normalizeText(selectionText);
+  const direct = productsSnapshot.docs.find((doc) => {
+    const productName = normalizeText(String(doc.data().name || ""));
+    return productName === selectedName || productName.includes(selectedName) || selectedName.includes(productName);
+  });
+  if (direct) return direct;
+
+  const ranked = productsSnapshot.docs
+    .map((doc) => {
+      const productName = String(doc.data().name || "");
+      const score = tokenOverlapScore(productName, selectionText);
+      const productTokenCount = normalizeText(productName).split(" ").filter((token) => token.length > 2).length;
+      return {
+        doc,
+        score,
+        ratio: productTokenCount ? score / productTokenCount : 0,
+      };
+    })
+    .sort((a, b) => b.score - a.score || b.ratio - a.ratio);
+
+  const best = ranked[0];
+  if (!best || best.score < 3 || best.ratio < 0.35) return null;
+  return best.doc;
+}
+
+function extractQuantitySelections(detailsText: string) {
+  const normalizedDetails = normalizeText(detailsText);
+  if (!normalizedDetails) return [];
+
+  const selections: { quantity: number; text: string; start: number; end: number }[] = [];
+  const pattern = /(\d+)\s*x\s+(.+?)(?=\s+\d+\s*x\s+|$)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(normalizedDetails)) !== null) {
+    const quantity = Number(match[1] || 0);
+    const text = String(match[2] || "").trim();
+    if (!Number.isFinite(quantity) || quantity <= 0 || text.length < 4) continue;
+
+    selections.push({
+      quantity,
+      text,
+      start: match.index,
+      end: pattern.lastIndex,
+    });
+  }
+
+  return selections;
+}
+
 function findProductsExplicitlyListedInDetails(lineItem: PromokitLineItem, productsSnapshot: QuerySnapshot) {
   const normalizedDetails = normalizeText(lineItem.detailsText);
   if (!normalizedDetails) return [];
 
   const consumedRanges: { start: number; end: number }[] = [];
   const matchedByProduct = new Map<string, ResolvedSelectedProduct>();
+  const quantitySelections = extractQuantitySelections(lineItem.detailsText);
+
+  quantitySelections.forEach((selection) => {
+    const productDoc = findProductDocBySelectionText(productsSnapshot, selection.text);
+    if (!productDoc) return;
+
+    consumedRanges.push({ start: selection.start, end: selection.end });
+    const productName = String(productDoc.data().name || selection.text);
+    const current = matchedByProduct.get(productDoc.ref.id);
+    matchedByProduct.set(productDoc.ref.id, {
+      productId: productDoc.ref.id,
+      quantity: (current?.quantity || 0) + selection.quantity,
+      name: productName,
+    });
+  });
+
   const candidates = productsSnapshot.docs
     .map((doc) => ({
       doc,
@@ -338,6 +410,10 @@ function isCustomKitLineItem(lineItem: PromokitLineItem) {
     text.includes("escolha suas") ||
     text.includes("kit livre")
   );
+}
+
+function isKitLineItem(lineItem: PromokitLineItem) {
+  return normalizeText(lineItem.name).includes("kit") || isCustomKitLineItem(lineItem);
 }
 
 function kitCompositionText(kitItems: any[], productsSnapshot: QuerySnapshot) {
@@ -549,6 +625,7 @@ async function findKit(lineItem: PromokitLineItem) {
   const db = getAdminDb();
   const normalizedName = normalizeText(lineItem.name);
   const kits = await db.collection("kits").get();
+  const lineItemNumber = normalizedName.match(/\b(\d+)\b/)?.[1] || "";
 
   return (
     kits.docs.find((doc) => normalizeText(String(doc.data().name || "")) === normalizedName) ||
@@ -556,6 +633,16 @@ async function findKit(lineItem: PromokitLineItem) {
       const kitName = normalizeText(String(doc.data().name || ""));
       return kitName.includes(normalizedName) || normalizedName.includes(kitName);
     }) ||
+    kits.docs
+      .map((doc) => {
+        const kitName = normalizeText(String(doc.data().name || ""));
+        const kitNumber = kitName.match(/\b(\d+)\b/)?.[1] || "";
+        const score = tokenOverlapScore(kitName, normalizedName);
+        const numberBonus = lineItemNumber && kitNumber && lineItemNumber === kitNumber ? 4 : 0;
+        return { doc, score: score + numberBonus };
+      })
+      .filter((candidate) => candidate.score >= 4)
+      .sort((a, b) => b.score - a.score)[0]?.doc ||
     null
   );
 }
@@ -865,7 +952,7 @@ export async function processPromokitOrder(order: any, options: ProcessOrderOpti
       continue;
     }
 
-    if (isCustomKitLineItem(lineItem)) {
+    if (isKitLineItem(lineItem)) {
       const explicitProducts = findProductsExplicitlyListedInDetails(lineItem, productsSnapshot);
       const aiInterpretation =
         explicitProducts.length > 0
@@ -909,8 +996,8 @@ export async function processPromokitOrder(order: any, options: ProcessOrderOpti
       } else {
         needsReview = true;
         await logOperationalEvent(db, {
-          type: "promokit_custom_kit_without_local_match",
-          title: `Pedido #${code} com Monte seu Kit sem marmitas claras`,
+          type: "promokit_kit_without_local_match",
+          title: `Pedido #${code} com kit sem baixa automatica`,
           status: "warning",
           source: "promokit",
           entityId: code,
