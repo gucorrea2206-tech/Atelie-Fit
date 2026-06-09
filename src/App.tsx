@@ -1650,6 +1650,8 @@ export default function App() {
       Boolean(orderNumber && movement.promokitOrderCode === orderNumber)
     );
   };
+  const getMovementTotalQuantity = (saleMovements: Movement[]) =>
+    saleMovements.reduce((total, movement) => total + Number(movement.quantity || 0), 0);
   const getRecognitionLabel = (recognitionSource?: string) => {
     if (recognitionSource === 'promokit_item_description') return 'Descrição do item Promokit';
     if (recognitionSource === 'promokit_kit_selection') return 'Escolha enviada pela Promokit';
@@ -2762,7 +2764,7 @@ export default function App() {
                     <div className="mt-3 flex flex-wrap gap-2">
                       {promokitSyncResult.processedSales.map(item => (
                         <span key={item.code} className="text-xs bg-white text-emerald-700 border border-emerald-100 px-3 py-1 rounded-lg font-bold">
-                          #{item.code} {item.createdSale ? 'lançado' : 'já existia'} · {item.movementCount} baixa(s)
+                          #{item.code} {item.createdSale ? 'lançado' : 'já existia'} · {item.movementCount} item(ns) de baixa
                         </span>
                       ))}
                     </div>
@@ -2795,6 +2797,7 @@ export default function App() {
                   const saleMovements = getSaleMovements(sale);
                   const isExpanded = Boolean(expandedSaleDetails[sale.id]);
                   const salePromokitDetails = saleMovements.find(movement => movement.promokitDetails)?.promokitDetails;
+                  const saleMovementTotalQuantity = getMovementTotalQuantity(saleMovements);
 
                   return (
                     <div key={sale.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -2822,7 +2825,7 @@ export default function App() {
                                 </span>
                               )}
                               <span className="text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 px-2.5 py-1 rounded-lg border border-gray-100">
-                                {saleMovements.length} baixa(s)
+                                {saleMovementTotalQuantity || sale.totalQuantity || 0} un baixadas
                               </span>
                             </div>
                             <p className="text-sm text-gray-600 mt-1 italic line-clamp-1">"{sale.itemsDescription}"</p>
@@ -2888,7 +2891,7 @@ export default function App() {
                                 <div className="flex items-center justify-between gap-3 mb-3">
                                   <h4 className="text-sm font-black text-gray-900">Marmitas do pedido</h4>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-gray-400">{sale.totalQuantity || saleMovements.length} un no registro</span>
+                                    <span className="text-xs font-bold text-gray-400">{saleMovementTotalQuantity || sale.totalQuantity || 0} un no registro</span>
                                     {sale.source === 'promokit' && (
                                       <button
                                         type="button"
