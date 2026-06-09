@@ -2794,6 +2794,7 @@ export default function App() {
                 sales.map(sale => {
                   const saleMovements = getSaleMovements(sale);
                   const isExpanded = Boolean(expandedSaleDetails[sale.id]);
+                  const salePromokitDetails = saleMovements.find(movement => movement.promokitDetails)?.promokitDetails;
 
                   return (
                     <div key={sale.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -2915,29 +2916,35 @@ export default function App() {
                                     <p className="text-xs text-amber-700 mt-2">{sale.itemsDescription}</p>
                                   </div>
                                 ) : (
-                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                    {saleMovements.map(movement => {
-                                      const product = products.find(item => item.id === movement.productId);
-                                      return (
-                                        <div key={movement.id} className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                              <p className="text-sm font-black text-gray-900">{product?.name || movement.promokitSelectedName || 'Marmita não encontrada'}</p>
-                                              <p className="text-xs text-gray-500 mt-1">{getRecognitionLabel(movement.recognitionSource)}</p>
+                                  <div className="space-y-3">
+                                    {salePromokitDetails && (
+                                      <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                                        <p className="text-xs font-black uppercase text-emerald-800 mb-1">Detalhes do pedido</p>
+                                        <p className="text-xs text-emerald-800 line-clamp-3">{salePromokitDetails}</p>
+                                      </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                      {saleMovements.map(movement => {
+                                        const product = products.find(item => item.id === movement.productId);
+                                        return (
+                                          <div key={movement.id} className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                                            <div className="flex items-start justify-between gap-3">
+                                              <div>
+                                                <p className="text-sm font-black text-gray-900">{product?.name || movement.promokitSelectedName || 'Marmita não encontrada'}</p>
+                                                <p className="text-xs text-gray-500 mt-1">{getRecognitionLabel(movement.recognitionSource)}</p>
+                                              </div>
+                                              <span className="text-sm font-black text-emerald-700 bg-white border border-emerald-100 px-2.5 py-1 rounded-xl">
+                                                {movement.quantity} un
+                                              </span>
                                             </div>
-                                            <span className="text-sm font-black text-emerald-700 bg-white border border-emerald-100 px-2.5 py-1 rounded-xl">
-                                              {movement.quantity} un
-                                            </span>
+                                            {movement.promokitSelectedName && product?.name && movement.promokitSelectedName !== product.name && (
+                                              <p className="text-xs text-gray-500 mt-2">Nome recebido: {movement.promokitSelectedName}</p>
+                                            )}
                                           </div>
-                                          {movement.promokitSelectedName && product?.name && movement.promokitSelectedName !== product.name && (
-                                            <p className="text-xs text-gray-500 mt-2">Nome recebido: {movement.promokitSelectedName}</p>
-                                          )}
-                                          {movement.promokitDetails && (
-                                            <p className="text-xs text-gray-500 mt-2 line-clamp-3">Detalhes: {movement.promokitDetails}</p>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
+                                        );
+                                      })}
+                                    </div>
                                   </div>
                                 )}
                               </div>
