@@ -199,6 +199,16 @@ function tokenOverlapScore(candidate: string, query: string) {
   return candidateTokens.reduce((score, token) => score + (queryTokens.has(token) ? 1 : 0), 0);
 }
 
+function normalizeSelectionSource(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function findProductDocBySelectionText(productsSnapshot: QuerySnapshot, selectionText: string) {
   const selectedName = normalizeText(selectionText);
   const direct = productsSnapshot.docs.find((doc) => {
@@ -226,25 +236,33 @@ function findProductDocBySelectionText(productsSnapshot: QuerySnapshot, selectio
 }
 
 function extractQuantitySelections(detailsText: string) {
-  const normalizedDetails = normalizeText(detailsText);
+  const normalizedDetails = normalizeSelectionSource(detailsText);
   if (!normalizedDetails) return [];
 
   const selections: { quantity: number; text: string; start: number; end: number }[] = [];
-  const pattern = /(\d+)\s*x\s+(.+?)(?=\s+\d+\s*x\s+|$)/g;
-  let match: RegExpExecArray | null;
+  const patterns = [
+    /(\d+)\s*x\s+([\s\S]+?)(?=(?:,?\s*\d+\s*x\s+)|$)/g,
+    /(\d+)\s*(?:und|unid|un|unidade|unidades)\s*-\s+([\s\S]+?)(?=(?:,?\s*\d+\s*(?:und|unid|un|unidade|unidades)\s*-\s+)|$)/g,
+  ];
 
-  while ((match = pattern.exec(normalizedDetails)) !== null) {
-    const quantity = Number(match[1] || 0);
-    const text = String(match[2] || "").trim();
-    if (!Number.isFinite(quantity) || quantity <= 0 || text.length < 4) continue;
+  patterns.forEach((pattern) => {
+    let match: RegExpExecArray | null;
 
-    selections.push({
-      quantity,
-      text,
-      start: match.index,
-      end: pattern.lastIndex,
-    });
-  }
+    while ((match = pattern.exec(normalizedDetails)) !== null) {
+      const quantity = Number(match[1] || 0);
+      const text = String(match[2] || "")
+        .replace(/[",]+$/g, "")
+        .trim();
+      if (!Number.isFinite(quantity) || quantity <= 0 || text.length < 4) continue;
+
+      selections.push({
+        quantity,
+        text,
+        start: match.index,
+        end: pattern.lastIndex,
+      });
+    }
+  });
 
   return selections;
 }
