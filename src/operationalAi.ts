@@ -17,6 +17,8 @@ export interface AIBillItem {
   codigoPagamento: string;
   dataVencimento: string;
   categoria: string;
+  confianca?: number;
+  observacoes?: string;
 }
 
 async function postJson<T>(url: string, body: unknown, fallbackMessage: string): Promise<T> {
@@ -48,10 +50,10 @@ export async function interpretStockText(
   );
 }
 
-export async function analyzeBillImage(base64Image: string): Promise<AIBillItem> {
+export async function analyzeBillImage(base64Image: string, mimeType?: string): Promise<AIBillItem> {
   return postJson<AIBillItem>(
     "/api/ai/analyze-bill",
-    { base64Image },
+    { base64Image, mimeType },
     "Erro ao processar imagem do boleto. Verifique se a iluminacao esta boa."
   );
 }

@@ -1265,7 +1265,7 @@ export default function App() {
       reader.onloadend = async () => {
         const base64 = (reader.result as string).split(',')[1];
         try {
-          const result = await analyzeBillImage(base64);
+          const result = await analyzeBillImage(base64, file.type || 'image/jpeg');
           setNewBill({
             name: result.nome,
             value: result.valor.toString(),
@@ -1274,6 +1274,9 @@ export default function App() {
             category: result.categoria,
             isRecurring: false
           });
+          if (typeof result.confianca === 'number' && result.confianca < 0.7) {
+            setError(result.observacoes || 'A IA leu o boleto com baixa confiança. Revise os campos antes de salvar.');
+          }
         } catch (err: any) {
           setError(err.message);
         } finally {
