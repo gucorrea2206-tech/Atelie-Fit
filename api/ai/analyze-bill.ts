@@ -84,66 +84,10 @@ Regras:
 2. Priorize "linha digitavel", "codigo de barras", "vencimento", "valor do documento", "valor a pagar" e "beneficiario".
 3. Nao confunda agencia/conta, CNPJ, nosso numero ou numero do documento com linha digitavel.
 4. Nao confunda desconto, juros, multa ou subtotal com valor total.
-5. Se o campo estiver ilegivel, use string vazia ou 0 e reduza confianca.`;
-}
-
-async function analyzeBillWithGemini({
-  apiKey,
-  base64Image,
-  mimeType,
-}: {
-  apiKey: string;
-  base64Image: string;
-  mimeType: string;
-}) {
-  const model = process.env.GEMINI_BILL_MODEL || "gemini-2.5-flash";
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: getBillPrompt() },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: base64Image,
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0,
-          responseMimeType: "application/json",
-          responseSchema: billSchema,
-        },
-      }),
-    }
-  ).finally(() => clearTimeout(timeout));
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gemini bill analysis failed: ${response.status} ${body}`);
-  }
-
-  const data = await response.json();
-  const outputText = data.candidates?.[0]?.content?.parts?.map((part: any) => part.text || "").join("\n") || "";
-  if (!outputText) {
-    throw new Error("Gemini bill analysis did not include output text.");
-  }
-
-  return normalizeBillAnalysis(JSON.parse(extractJsonText(outputText)));
+5. Linha digitavel de boleto bancario costuma ter 47 ou 48 digitos; codigo de barras costuma ter 44 digitos.
+6. Se encontrar varios blocos numericos, escolha apenas o que tiver formato de linha digitavel/codigo de barras.
+7. Leia o codigoPagamento caractere por caractere; nao corrija nem complete digitos ausentes.
+8. Se o campo estiver ilegivel, use string vazia ou 0 e reduza confianca.`;
 }
 
 async function analyzeBillWithOpenAI({
@@ -155,7 +99,7 @@ async function analyzeBillWithOpenAI({
   base64Image: string;
   mimeType: string;
 }) {
-  const model = process.env.OPENAI_BILL_MODEL || "gpt-4o";
+  const model = process.env.OPENAI_BILL_MODEL || "gpt-4.1";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
 
@@ -169,7 +113,7 @@ async function analyzeBillWithOpenAI({
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_output_tokens: 900,
+      max_output_tokens: 1200,
       instructions: `Voce e um OCR especializado em boletos, DANFEs, faturas e contas brasileiras.
 Leia apenas o que estiver visivel na imagem. Nao chute dados.
 Se um campo nao estiver legivel, retorne string vazia para texto, 0 para valor e reduza a confianca.
@@ -232,17 +176,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const imageMimeType = String(mimeType || "image/jpeg");
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
-    if (geminiApiKey) {
-      return res.status(200).json(
-        await analyzeBillWithGemini({
-          apiKey: geminiApiKey,
-          base64Image,
-          mimeType: imageMimeType,
-        })
-      );
-    }
-
     return res.status(200).json(
       await analyzeBillWithOpenAI({
         apiKey: requireEnv("OPENAI_API_KEY"),
