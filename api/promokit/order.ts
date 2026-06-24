@@ -1,10 +1,14 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 import { getPromokitOrder } from "../_lib/promokit.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const apiUser = await requireAdminApiUser(req, res);
+  if (!apiUser) return;
 
   try {
     const code = String(req.query.code || "");

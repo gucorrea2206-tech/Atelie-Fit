@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 import { createOperationalJson } from "../_lib/operationsOpenai.js";
 
 type StockInterpretation = {
@@ -98,6 +99,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const apiUser = await requireAdminApiUser(req, res);
+  if (!apiUser) return;
 
   try {
     const { text, type, context } = req.body || {};

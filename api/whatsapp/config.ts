@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 import { missingEnv } from "../_lib/env.js";
 
 const requiredEnv = [
@@ -12,10 +13,13 @@ const requiredEnv = [
   "FIREBASE_FIRESTORE_DATABASE_ID",
 ];
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const apiUser = await requireAdminApiUser(req, res);
+  if (!apiUser) return;
 
   const missing = missingEnv(requiredEnv);
   return res.status(200).json({

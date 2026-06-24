@@ -1,3 +1,5 @@
+import { auth } from "./firebase";
+
 export interface AIInterpretation {
   tipo: "entrada" | "saida";
   itens: {
@@ -22,10 +24,16 @@ export interface AIBillItem {
 }
 
 async function postJson<T>(url: string, body: unknown, fallbackMessage: string): Promise<T> {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) {
+    throw new Error("Sua sessao expirou. Entre novamente para usar a IA.");
+  }
+
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   });

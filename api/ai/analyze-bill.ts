@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireAdminApiUser } from "../_lib/apiAuth.js";
 import { requireEnv } from "../_lib/env.js";
 
 export const config = {
@@ -168,6 +169,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const apiUser = await requireAdminApiUser(req, res);
+  if (!apiUser) return;
 
   try {
     const { base64Image, mimeType } = req.body || {};
