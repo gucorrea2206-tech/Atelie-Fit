@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
-import { sendWhatsAppText } from "../_lib/evolution.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
 import { logOperationalEvent } from "../_lib/operationalEvents.js";
 import { requireAdminApiUser } from "../_lib/apiAuth.js";
@@ -80,8 +79,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getAdminDb();
     const input = req.method === "POST" ? req.body || {} : req.query || {};
-    const dryRun = input.dryRun !== false;
+    // Browser requests remain simulations by default. A protected cron run is allowed to enqueue real work.
+    const dryRun = req.method === "POST" ? input.dryRun !== false : false;
     const queueFollowups = input.queueFollowups === true || input.queueFollowups === "true";
+    const shouldQueue = !dryRun;
     const config = await getWhatsappAiConfig();
     const automations: AutomationConfig[] = Array.isArray(input.automations) ? input.automations : config.automations;
     const activeAutomations = automations.filter((automation) => automation.enabled);
@@ -114,6 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             phone: customer.phone || "",
             inactiveDays,
             lastOrderCode: customer.lastOrderCode || "",
+            lastOrderAt: customer.lastOrderAt || null,
             lastOrderTotal: customer.lastOrderTotal ?? null,
             reason: isRecovery
               ? `Cliente esta ha ${inactiveDays} dia(s) sem pedir.`
@@ -135,24 +137,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       });
 
-    if (!dryRun && !queueFollowups) {
-      for (const candidate of candidates) {
+    if (!dryRun && shouldQueue) {
+      const candidatesToQueue = queueFollowups
+        ? candidates.filter((candidate) => candidate.automationId === "post_delivery")
+        : candidates;
+
+      for (const candidate of candidatesToQueue) {
         const remoteJid = buildRemoteJid(candidate.phone);
         if (!remoteJid) continue;
-        const result = await sendWhatsAppText(remoteJid, candidate.message);
-        sent.push({ ...candidate, result });
-      }
-    }
-
-    if (queueFollowups) {
-      const postDeliveryCandidates = candidates.filter((candidate) => candidate.automationId === "post_delivery");
-      for (const candidate of postDeliveryCandidates) {
-        const remoteJid = buildRemoteJid(candidate.phone);
-        if (!remoteJid || !candidate.lastOrderCode) continue;
+        const automationCycle = String(candidate.lastOrderCode || candidate.lastOrderAt || "first_contact");
 
         const queueRef = db
           .collection("campaign_dispatch_queue")
-          .doc(getQueueDocId("post_sale", candidate.lastOrderCode, remoteJid));
+          .doc(getQueueDocId(`automation_${candidate.automationId}`, automationCycle, remoteJid));
         const existing = await queueRef.get();
         const existingStatus = existing.data()?.status;
         if (existing.exists && ["pending", "sending", "sent"].includes(String(existingStatus))) {
@@ -162,8 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         await queueRef.set(
           {
-            campaignId: "post_sale",
-            campaignName: "Pós-venda automático",
+            campaignId: `automation_${candidate.automationId}`,
+            campaignName: candidate.automationTitle,
             automationId: candidate.automationId,
             remoteJid,
             phone: candidate.phone || "",
@@ -178,6 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             updatedAt: FieldValue.serverTimestamp(),
             metadata: {
               lastOrderCode: candidate.lastOrderCode,
+              lastOrderAt: candidate.lastOrderAt,
               lastOrderTotal: candidate.lastOrderTotal,
               reason: candidate.reason,
             },
@@ -190,10 +188,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await logOperationalEvent(db, {
       type: "whatsapp_automations",
-      title: queueFollowups ? "Pós-venda enfileirado" : dryRun ? "Automações simuladas" : "Automações executadas",
+      title: shouldQueue ? "Automações enfileiradas" : dryRun ? "Automações simuladas" : "Automações executadas",
       status: candidates.length || operationalActions.length ? "info" : "success",
       source: "whatsapp",
-      message: `${candidates.length} candidato(s), ${queued.length} pós-venda(s) enfileirado(s), ${operationalActions.length} ação(ões) operacional(is), ${sent.length} envio(s).`,
+      message: `${candidates.length} candidato(s), ${queued.length} automação(ões) enfileirada(s), ${operationalActions.length} ação(ões) operacional(is), ${sent.length} envio(s).`,
       metadata: {
         dryRun,
         queueFollowups,
