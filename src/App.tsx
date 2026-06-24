@@ -5122,7 +5122,7 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <input readOnly value="AtelieFit-01" className="bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
                       <input readOnly value="WhatsApp do atendimento" className="bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
-                      <input readOnly value="/api/whatsapp/evolution/webhook" className="md:col-span-2 bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
+                      <input readOnly value="https://atelie-fit.vercel.app/api/whatsapp/webhook" className="md:col-span-2 bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-600 border-none" />
                     </div>
                   </div>
                 </div>
