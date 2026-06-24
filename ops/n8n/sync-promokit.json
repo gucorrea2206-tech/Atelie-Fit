@@ -1,0 +1,67 @@
+{
+  "name": "[Atelie Fit] Sincronizar pedidos Promokit",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "b6002579-a25c-4f2d-9bfe-4862a4c8fe01",
+      "name": "A cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://atelie-fit.vercel.app/api/promokit/sync-new-orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.ATELIE_CRON_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "c74e8f63-da48-4c84-868c-375c7af74252",
+      "name": "Sincronizar pedidos Promokit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "A cada 5 minutos": {
+      "main": [
+        [
+          {
+            "node": "Sincronizar pedidos Promokit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}
