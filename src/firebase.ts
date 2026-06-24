@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, onSnapshot, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import localFirebaseConfig from '../firebase-applet-config.json';
 
 // Use environment variables if available (Vercel/Production), otherwise fallback to local config (AI Studio)
@@ -18,6 +19,7 @@ const firestoreDatabaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firestoreDatabaseId);
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
@@ -152,6 +154,10 @@ export interface CampaignDispatchQueueItem {
   phone?: string;
   customerName?: string;
   messageText: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'audio';
+  mediaMimeType?: string;
+  mediaFileName?: string;
   variantIndex?: number;
   status: 'pending' | 'sending' | 'sent' | 'failed' | 'skipped';
   attempts?: number;

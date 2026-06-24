@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "../_lib/firebaseAdmin.js";
-import { sendWhatsAppText } from "../_lib/evolution.js";
+import { sendWhatsAppMedia, sendWhatsAppText } from "../_lib/evolution.js";
 import { buildCampaignContext, saveCampaignContext } from "../_lib/campaignContext.js";
 import { getWhatsappAiConfig } from "../_lib/whatsappAiConfig.js";
 import { logOperationalEvent } from "../_lib/operationalEvents.js";
@@ -78,7 +78,8 @@ async function processCampaignQueue(req: VercelRequest, res: VercelResponse) {
     const campaignId = String(item.campaignId || "");
     const messageText = String(item.messageText || "");
 
-    if (!remoteJid || !campaignId || !messageText) {
+    const mediaUrl = String(item.mediaUrl || "");
+    if (!remoteJid || !campaignId || (!messageText && !mediaUrl)) {
       await queueDoc.ref.set(
         {
           status: "skipped" satisfies QueueStatus,
@@ -104,7 +105,18 @@ async function processCampaignQueue(req: VercelRequest, res: VercelResponse) {
       const aiConfig = await getWhatsappAiConfig();
       const campaign = aiConfig.campaigns.find((entry) => entry.id === campaignId);
 
-      const result = await sendWhatsAppText(remoteJid, messageText);
+      const result = mediaUrl
+        ? await sendWhatsAppMedia(
+            remoteJid,
+            {
+              url: mediaUrl,
+              type: item.mediaType === "audio" ? "audio" : "image",
+              mimeType: String(item.mediaMimeType || ""),
+              fileName: String(item.mediaFileName || ""),
+            },
+            messageText
+          )
+        : await sendWhatsAppText(remoteJid, messageText);
       if (campaign) {
         const context = buildCampaignContext(remoteJid, campaign, messageText, "sent");
         await saveCampaignContext(db, context);
@@ -208,9 +220,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const skipped: any[] = [];
     const scheduledDate = scheduledFor ? new Date(scheduledFor) : new Date();
     const safeScheduledDate = Number.isNaN(scheduledDate.getTime()) ? new Date() : scheduledDate;
-    const variants = campaign.randomizerEnabled && campaign.messageVariants?.length
-      ? campaign.messageVariants
-      : [campaign.initialMessage];
+    const variants = [campaign.initialMessage];
+    const batchSize = Math.max(1, Math.min(Number(campaign.cadenceBatchSize || 12), 25));
+    const intervalMinutes = Math.max(1, Math.min(Number(campaign.cadenceIntervalMinutes || 5), 120));
+    let scheduledIndex = 0;
 
     for (const recipient of recipients as Recipient[]) {
       const recipientRemoteJid = buildRemoteJid(recipient.remoteJid || recipient.phone || "");
@@ -221,6 +234,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const variantIndex = getVariantIndex(recipientRemoteJid, variants.length);
       const messageText = replaceTemplate(variants[variantIndex] || campaign.initialMessage, recipient);
+      const queuedFor = new Date(safeScheduledDate.getTime() + Math.floor(scheduledIndex / batchSize) * intervalMinutes * 60 * 1000);
+      scheduledIndex += 1;
       const queueDocId = getQueueDocId(campaign.id, recipientRemoteJid);
       const queueRef = db.collection("campaign_dispatch_queue").doc(queueDocId);
       const existing = await queueRef.get();
@@ -238,17 +253,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         phone: recipient.phone || "",
         customerName: recipient.name || "",
         messageText,
+        mediaUrl: campaign.mediaUrl || "",
+        mediaType: campaign.mediaType || "",
+        mediaMimeType: campaign.mediaMimeType || "",
+        mediaFileName: campaign.mediaFileName || "",
         variantIndex,
         status: dryRun ? ("skipped" satisfies QueueStatus) : ("pending" satisfies QueueStatus),
         dryRun: Boolean(dryRun),
-        scheduledFor: Timestamp.fromDate(safeScheduledDate),
+        scheduledFor: Timestamp.fromDate(queuedFor),
         attempts: 0,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };
 
       if (!dryRun) await queueRef.set(queuePayload, { merge: true });
-      queued.push({ id: queueDocId, remoteJid: recipientRemoteJid, campaignId, campaignName: campaign.name, dryRun, messageText, scheduledFor: safeScheduledDate.toISOString() });
+      queued.push({ id: queueDocId, remoteJid: recipientRemoteJid, campaignId, campaignName: campaign.name, dryRun, messageText, scheduledFor: queuedFor.toISOString() });
     }
 
     await logOperationalEvent(db, {

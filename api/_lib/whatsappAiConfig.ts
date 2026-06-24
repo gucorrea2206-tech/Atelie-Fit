@@ -58,6 +58,12 @@ export type WhatsAppCampaignConfig = {
   couponDetails: string;
   campaignKnowledge: string;
   initialMessage: string;
+  mediaUrl?: string;
+  mediaType?: "image" | "audio" | "";
+  mediaMimeType?: string;
+  mediaFileName?: string;
+  cadenceBatchSize?: number;
+  cadenceIntervalMinutes?: number;
   randomizerEnabled: boolean;
   messageVariants: string[];
   triggerKeyword: string;

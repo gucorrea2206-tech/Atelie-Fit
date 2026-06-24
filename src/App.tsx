@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   auth, 
   db, 
+  storage,
   signInWithGoogle, 
   logout, 
   Product, 
@@ -33,6 +34,7 @@ import {
   doc,
   Timestamp
 } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { interpretStockText, AIInterpretation, analyzeBillImage, AIBillItem } from './operationalAi';
 import { buildCampaignAudienceSegments, CampaignAudienceSegment, getLeadInactiveDays } from './campaignAudience';
 import { buildProductionRecommendations } from './productionInsights';
@@ -253,6 +255,12 @@ type WhatsAppCampaignConfig = {
   couponDetails: string;
   campaignKnowledge: string;
   initialMessage: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'audio' | '';
+  mediaMimeType: string;
+  mediaFileName: string;
+  cadenceBatchSize: number;
+  cadenceIntervalMinutes: number;
   randomizerEnabled: boolean;
   messageVariants: string[];
   triggerKeyword: string;
@@ -384,6 +392,12 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     couponDetails: '10% de desconto para pedido fechado na semana da campanha.',
     campaignKnowledge: 'Cupom ATELIE10 dá 10% de desconto. Enviar o cupom quando a pessoa demonstrar interesse. Se pedir opções, direcionar para kits e cardápio. Link do cardápio: inserir link oficial aqui.',
     initialMessage: 'Tenho um cupom disponível para você voltar essa semana. Quer que eu te mande?',
+    mediaUrl: '',
+    mediaType: '',
+    mediaMimeType: '',
+    mediaFileName: '',
+    cadenceBatchSize: 12,
+    cadenceIntervalMinutes: 5,
     randomizerEnabled: true,
     messageVariants: [
       'Tenho um cupom disponível para você voltar essa semana. Quer que eu te mande?',
@@ -410,6 +424,12 @@ const defaultWhatsappCampaigns: WhatsAppCampaignConfig[] = [
     couponDetails: 'Campanha sem cupom obrigatório; foco em resposta para receber opções.',
     campaignKnowledge: 'Campanha para oferecer kits semanais. Se a pessoa responder positivamente, entender quantidade desejada e encaminhar para venda consultiva. Link do cardápio: inserir link oficial aqui.',
     initialMessage: 'Essa semana temos sugestões de kits práticos para deixar suas refeições prontas. Quer receber as opções?',
+    mediaUrl: '',
+    mediaType: '',
+    mediaMimeType: '',
+    mediaFileName: '',
+    cadenceBatchSize: 12,
+    cadenceIntervalMinutes: 5,
     randomizerEnabled: false,
     messageVariants: [
       'Essa semana temos sugestões de kits práticos para deixar suas refeições prontas. Quer receber as opções?',
@@ -458,7 +478,13 @@ const normalizeWhatsappCampaign = (campaign: Partial<WhatsAppCampaignConfig>, fa
     couponCode: campaign.couponCode || '',
     couponDetails: campaign.couponDetails || base.couponDetails || '',
     campaignKnowledge: campaign.campaignKnowledge || base.campaignKnowledge || '',
-    initialMessage,
+  initialMessage,
+    mediaUrl: campaign.mediaUrl || '',
+    mediaType: campaign.mediaType === 'audio' || campaign.mediaType === 'image' ? campaign.mediaType : '',
+    mediaMimeType: campaign.mediaMimeType || '',
+    mediaFileName: campaign.mediaFileName || '',
+    cadenceBatchSize: Math.max(1, Math.min(Number(campaign.cadenceBatchSize || 12), 25)),
+    cadenceIntervalMinutes: Math.max(1, Math.min(Number(campaign.cadenceIntervalMinutes || 5), 120)),
     randomizerEnabled: Boolean(campaign.randomizerEnabled),
     messageVariants,
     responseRecognition: campaign.responseRecognition || base.responseRecognition || '',
@@ -548,7 +574,7 @@ const tabMeta: Record<AppTab, { label: string; title: string; description: strin
 };
 
 const managementTabs: AppTab[] = ['estoque', 'producao', 'config', 'compras', 'contas'];
-const marketingTabs: AppTab[] = ['campanhas', 'fluxos', 'assistenteCampanhas'];
+const marketingTabs: AppTab[] = ['campanhas', 'fluxos'];
 const whatsappSubTabs: { id: WhatsAppEnvironment; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'atendimento', label: 'Atendimento', icon: MessageCircle },
@@ -604,6 +630,7 @@ export default function App() {
   const [campaignQueueResult, setCampaignQueueResult] = useState<any | null>(null);
   const [campaignSchedule, setCampaignSchedule] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [campaignAudienceSegment, setCampaignAudienceSegment] = useState<CampaignAudienceSegment>('parados15');
+  const [campaignCreationStep, setCampaignCreationStep] = useState<1 | 2 | 3>(1);
   const [operationalEventFilter, setOperationalEventFilter] = useState<'todos' | 'error' | 'warning'>('todos');
   const [isSavingWhatsappAi, setIsSavingWhatsappAi] = useState(false);
   const [whatsappAiSavedAt, setWhatsappAiSavedAt] = useState<string | null>(null);
@@ -994,7 +1021,7 @@ export default function App() {
     );
   };
 
-  const handleWhatsappCampaignChange = (campaignId: string, field: keyof WhatsAppCampaignConfig, value: string | boolean | string[]) => {
+  const handleWhatsappCampaignChange = (campaignId: string, field: keyof WhatsAppCampaignConfig, value: string | boolean | string[] | number) => {
     setWhatsappCampaigns(currentCampaigns =>
       currentCampaigns.map(campaign => {
         if (campaign.id !== campaignId) return campaign;
@@ -1038,6 +1065,12 @@ export default function App() {
         couponDetails: 'Defina a condição, validade e regra de uso do cupom.',
         campaignKnowledge: 'Informe aqui tudo que o assistente deve saber sobre essa campanha: cupom, validade, regra, link do cardápio, público, objeções e respostas importantes.',
         initialMessage: 'Tenho uma novidade para você. Quer que eu te mande?',
+        mediaUrl: '',
+        mediaType: '',
+        mediaMimeType: '',
+        mediaFileName: '',
+        cadenceBatchSize: 12,
+        cadenceIntervalMinutes: 5,
         randomizerEnabled: false,
         messageVariants: ['Tenho uma novidade para você. Quer que eu te mande?'],
         triggerKeyword: 'sim, quero, manda',
@@ -1051,6 +1084,66 @@ export default function App() {
     setSelectedCampaignId(id);
     setEditingCampaignId(id);
     setSelectedFlowCampaignId(id);
+    setCampaignCreationStep(1);
+  };
+
+  const handleCampaignMediaUpload = async (campaignId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const mediaType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : '';
+    if (!mediaType) {
+      setError('Use uma imagem ou um arquivo de áudio para a campanha.');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setError('A mídia da campanha deve ter no máximo 25 MB.');
+      return;
+    }
+
+    try {
+      setIsSavingWhatsappAi(true);
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-');
+      const mediaRef = ref(storage, `campaign-media/${campaignId}/${Date.now()}-${safeName}`);
+      await uploadBytes(mediaRef, file, { contentType: file.type });
+      const mediaUrl = await getDownloadURL(mediaRef);
+      setWhatsappCampaigns(currentCampaigns => currentCampaigns.map(campaign => campaign.id === campaignId ? {
+        ...campaign,
+        mediaUrl,
+        mediaType,
+        mediaMimeType: file.type,
+        mediaFileName: file.name,
+      } : campaign));
+    } catch (err: any) {
+      setError(`Erro ao enviar mídia: ${err.message || 'falha no upload'}`);
+    } finally {
+      setIsSavingWhatsappAi(false);
+      event.target.value = '';
+    }
+  };
+
+  const saveCampaigns = async (campaigns: WhatsAppCampaignConfig[]) => {
+    const updatedAt = new Date().toISOString();
+    await setDoc(doc(db, 'whatsapp_ai_config', 'main'), { campaigns, updatedAt }, { merge: true });
+    setWhatsappAiSavedAt(updatedAt);
+  };
+
+  const handleSaveCampaignDraft = async (campaignId: string, finalize = false) => {
+    const nextCampaigns = whatsappCampaigns.map(campaign => campaign.id === campaignId ? {
+      ...campaign,
+      status: finalize ? 'Finalizada' as const : 'Rascunho' as const,
+    } : campaign);
+    try {
+      setIsSavingWhatsappAi(true);
+      await saveCampaigns(nextCampaigns);
+      setWhatsappCampaigns(nextCampaigns);
+      setEditingCampaignId(finalize ? null : campaignId);
+      if (finalize) setCampaignCreationStep(3);
+    } catch (err: any) {
+      setError(`Erro ao salvar campanha: ${err.message || 'falha ao salvar'}`);
+    } finally {
+      setIsSavingWhatsappAi(false);
+    }
   };
 
   const handleWhatsappCampaignVariantChange = (campaignId: string, index: number, value: string) => {
@@ -3855,6 +3948,77 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-2xl font-black text-gray-900">Campanhas</h2>
+                  <p className="text-sm text-gray-500 mt-1">Crie um disparo em três passos: mensagem, lista e cadência.</p>
+                </div>
+                <button onClick={handleAddWhatsappCampaign} className="flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black hover:bg-emerald-700 transition-all">
+                  <Plus size={18} /> Nova campanha
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-4">
+                <aside className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-gray-100"><p className="text-xs font-black uppercase text-gray-400">Campanhas salvas</p></div>
+                  <div className="divide-y divide-gray-100">
+                    {whatsappCampaigns.map(campaign => (
+                      <button key={campaign.id} onClick={() => { setSelectedCampaignId(campaign.id); setEditingCampaignId(campaign.status === 'Rascunho' ? campaign.id : null); setCampaignCreationStep(1); }} className={`w-full text-left p-4 transition-all ${selectedCampaign?.id === campaign.id ? 'bg-emerald-50' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-center justify-between gap-2"><p className="font-black text-gray-900 truncate">{campaign.name}</p><span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase ${campaign.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{campaign.status}</span></div>
+                        <p className="text-xs text-gray-500 mt-1 truncate">{campaign.audience}</p>
+                      </button>
+                    ))}
+                  </div>
+                </aside>
+
+                {selectedCampaign && (
+                  <section className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                      <div><p className="text-xs font-black uppercase text-emerald-700">Criação de campanha</p><h3 className="text-2xl font-black text-gray-900 mt-1">{selectedCampaign.name}</h3></div>
+                      <div className="flex gap-2">
+                        <button onClick={() => deleteWhatsappCampaign(selectedCampaign.id)} className="px-4 py-2 bg-red-50 text-red-600 rounded-2xl text-sm font-black">Excluir</button>
+                        {selectedCampaign.status !== 'Rascunho' && <button onClick={() => { setEditingCampaignId(selectedCampaign.id); setCampaignCreationStep(1); }} className="px-4 py-2 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black">Editar</button>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      {([['Mensagem', 1], ['Lista', 2], ['Cadência', 3]] as const).map(([label, step]) => <button key={step} onClick={() => setCampaignCreationStep(step)} className={`min-h-12 px-3 rounded-2xl text-sm font-black transition-colors ${campaignCreationStep === step ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-emerald-50'}`}>{step}. {label}</button>)}
+                    </div>
+
+                    {isSelectedCampaignEditing ? <>
+                      {campaignCreationStep === 1 && <div className="space-y-4">
+                        <div><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Nome da campanha</p><input value={selectedCampaign.name} onChange={event => handleWhatsappCampaignChange(selectedCampaign.id, 'name', event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none" /></div>
+                        <div><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Mensagem</p><textarea value={selectedCampaign.initialMessage} onChange={event => handleWhatsappCampaignChange(selectedCampaign.id, 'initialMessage', event.target.value)} rows={5} placeholder="Escreva a mensagem que será enviada." className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100 outline-none resize-none" /></div>
+                        <div className="border border-dashed border-gray-200 rounded-2xl p-4">
+                          <div className="flex items-center justify-between gap-3"><div><p className="font-black text-gray-900">Mídia opcional</p><p className="text-xs text-gray-500 mt-1">Imagem ou áudio de até 25 MB.</p></div><label className="cursor-pointer px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-black"><input type="file" accept="image/*,audio/*" onChange={event => handleCampaignMediaUpload(selectedCampaign.id, event)} className="hidden" />{isSavingWhatsappAi ? 'Enviando...' : 'Adicionar arquivo'}</label></div>
+                          {selectedCampaign.mediaUrl && <div className="mt-4 flex items-center gap-3 bg-gray-50 p-3 rounded-xl"><div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">{selectedCampaign.mediaType === 'audio' ? <Headphones size={19} /> : <ImageIcon size={19} />}</div><p className="text-sm font-bold text-gray-700 truncate flex-1">{selectedCampaign.mediaFileName || 'Mídia adicionada'}</p><button onClick={() => setWhatsappCampaigns(items => items.map(item => item.id === selectedCampaign.id ? { ...item, mediaUrl: '', mediaType: '', mediaMimeType: '', mediaFileName: '' } : item))} className="text-red-600 text-sm font-black">Remover</button></div>}
+                        </div>
+                        <button onClick={() => setCampaignCreationStep(2)} className="ml-auto flex items-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black">Próximo <ChevronRight size={17} /></button>
+                      </div>}
+
+                      {campaignCreationStep === 2 && <div className="space-y-4">
+                        <div><p className="font-black text-gray-900">Defina a lista de envio</p><p className="text-sm text-gray-500 mt-1">Escolha um segmento salvo a partir dos seus leads Promokit.</p></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{campaignAudienceSegments.map(segment => <button key={segment.id} onClick={() => { setCampaignAudienceSegment(segment.id); handleWhatsappCampaignChange(selectedCampaign.id, 'audience', segment.label); }} className={`text-left p-4 rounded-2xl border ${campaignAudienceSegment === segment.id ? 'bg-emerald-50 border-emerald-200 ring-2 ring-emerald-100' : 'border-gray-100 hover:bg-gray-50'}`}><div className="flex justify-between gap-2"><p className="font-black text-gray-900">{segment.label}</p><span className="text-emerald-700 font-black">{segment.leads.length}</span></div><p className="text-xs text-gray-500 mt-1">{segment.description}</p></button>)}</div>
+                        <div className="p-4 bg-gray-50 rounded-2xl text-sm text-gray-600"><strong>{campaignRecipients.length} contatos</strong> com telefone serão incluídos nesta campanha.</div>
+                        <div className="flex justify-between gap-3"><button onClick={() => setCampaignCreationStep(1)} className="px-5 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black">Voltar</button><button onClick={() => setCampaignCreationStep(3)} className="px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black">Próximo</button></div>
+                      </div>}
+
+                      {campaignCreationStep === 3 && <div className="space-y-4">
+                        <div><p className="font-black text-gray-900">Cadência de disparo</p><p className="text-sm text-gray-500 mt-1">A fila separa os contatos em lotes para manter o número saudável.</p></div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3"><div><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Iniciar em</p><input type="datetime-local" value={campaignSchedule} onChange={event => setCampaignSchedule(event.target.value)} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100" /></div><div><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Contatos por lote</p><input type="number" min="1" max="25" value={selectedCampaign.cadenceBatchSize} onChange={event => handleWhatsappCampaignChange(selectedCampaign.id, 'cadenceBatchSize', Number(event.target.value))} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100" /></div><div><p className="text-[10px] font-black uppercase text-gray-400 mb-1">Pausa entre lotes (min)</p><input type="number" min="1" max="120" value={selectedCampaign.cadenceIntervalMinutes} onChange={event => handleWhatsappCampaignChange(selectedCampaign.id, 'cadenceIntervalMinutes', Number(event.target.value))} className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm border border-gray-100" /></div></div>
+                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-sm text-emerald-800">{campaignRecipients.length} contatos em lotes de {selectedCampaign.cadenceBatchSize}. A cada {selectedCampaign.cadenceIntervalMinutes} minuto(s), a fila libera o próximo lote.</div>
+                        <div className="flex justify-between gap-3"><button onClick={() => setCampaignCreationStep(2)} className="px-5 py-3 bg-gray-100 text-gray-600 rounded-2xl text-sm font-black">Voltar</button><button onClick={() => handleSaveCampaignDraft(selectedCampaign.id, true)} disabled={!selectedCampaign.initialMessage.trim() && !selectedCampaign.mediaUrl} className="px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black disabled:opacity-50">{isSavingWhatsappAi ? 'Salvando...' : 'Finalizar campanha'}</button></div>
+                      </div>}
+                    </> : <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[10px] uppercase font-black text-gray-400">Lista</p><p className="font-black text-gray-900 mt-1">{selectedCampaign.audience}</p></div><div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[10px] uppercase font-black text-gray-400">Cadência</p><p className="font-black text-gray-900 mt-1">{selectedCampaign.cadenceBatchSize} a cada {selectedCampaign.cadenceIntervalMinutes} min</p></div><div className="p-4 bg-gray-50 rounded-2xl"><p className="text-[10px] uppercase font-black text-gray-400">Status</p><p className="font-black text-emerald-700 mt-1">{selectedCampaign.status}</p></div></div>
+                      <div className="p-5 bg-gray-50 rounded-2xl"><p className="text-[10px] uppercase font-black text-gray-400">Mensagem</p>{selectedCampaign.mediaUrl && <p className="text-xs font-bold text-emerald-700 mt-2">{selectedCampaign.mediaType === 'audio' ? 'Áudio anexado' : 'Imagem anexada'}: {selectedCampaign.mediaFileName}</p>}<p className="text-sm text-gray-700 mt-2 whitespace-pre-line">{selectedCampaign.initialMessage || 'Campanha somente com mídia.'}</p></div>
+                      <button disabled={isQueueingCampaign || campaignRecipients.length === 0} onClick={handleQueueSelectedCampaign} className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-black disabled:opacity-50">{isQueueingCampaign ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />} Preparar {campaignRecipients.length} disparos</button>
+                    </div>}
+                  </section>
+                )}
+              </div>
+
+              {false && <>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-black text-gray-900">Campanhas</h2>
                   <p className="text-sm text-gray-500 mt-1">Mensagens para disparar no WhatsApp para uma lista de clientes.</p>
                 </div>
                 <button
@@ -4158,6 +4322,7 @@ export default function App() {
                   </div>
                 )}
               </div>
+              </>}
             </motion.div>
           )}
 
