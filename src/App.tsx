@@ -1828,6 +1828,19 @@ export default function App() {
     failed: selectedCampaignQueue.filter(item => item.status === 'failed').length,
     skipped: selectedCampaignQueue.filter(item => item.status === 'skipped').length,
   };
+  const getCampaignQueueScheduleLabel = (item: CampaignDispatchQueueItem) => {
+    const scheduledValue = item.scheduledFor as unknown;
+    const scheduledDate =
+      scheduledValue && typeof (scheduledValue as Timestamp).toDate === 'function'
+        ? (scheduledValue as Timestamp).toDate()
+        : scheduledValue
+          ? new Date(String(scheduledValue))
+          : null;
+
+    return scheduledDate && !Number.isNaN(scheduledDate.getTime())
+      ? `Agendado para ${format(scheduledDate, "dd/MM HH:mm", { locale: ptBR })}`
+      : item.messageText;
+  };
   const campaignAudienceSegments = buildCampaignAudienceSegments(whatsappLeads, today);
   const selectedCampaignAudience = campaignAudienceSegments.find(segment => segment.id === campaignAudienceSegment) || campaignAudienceSegments[0];
   const selectedCampaignSavedAudience = campaignAudienceSegments.find(segment => segment.label === selectedCampaign?.audience) || selectedCampaignAudience;
@@ -4116,7 +4129,7 @@ export default function App() {
                               <div key={item.id} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <p className="text-sm font-black text-gray-900 truncate">{item.customerName || item.phone || item.remoteJid}</p>
-                                  <p className="text-xs text-gray-500 truncate">{item.scheduledFor ? `Agendado para ${format(new Date(item.scheduledFor), "dd/MM HH:mm", { locale: ptBR })}` : item.messageText}</p>
+                                  <p className="text-xs text-gray-500 truncate">{getCampaignQueueScheduleLabel(item)}</p>
                                 </div>
                                 <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg self-start sm:self-auto ${
                                   item.status === 'sent' ? 'bg-emerald-100 text-emerald-700' :
